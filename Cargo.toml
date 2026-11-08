@@ -4,14 +4,14 @@ version = "0.1.0"
 edition = "2024"
 autoexamples = false
 rust-version = "1.95"
-description = "DOS-era PC sound devices on a shared hardware timeline"
+description = "Emulated DOS-era sound devices (PC speaker, Sound Blaster 2.0, AdLib OPL2/OPL3) on a shared hardware timeline"
 license = "EUPL-1.2 OR MIT OR Apache-2.0"
 repository = "https://github.com/sunsided/game-toolkit-dosaudio"
 homepage = "https://github.com/sunsided/game-toolkit-dosaudio"
 documentation = "https://docs.rs/game-toolkit-dosaudio"
 authors = ["Markus Mayer"]
 readme = "README.md"
-keywords = ["dos", "adlib", "opl", "audio", "emulation"]
+keywords = ["dos", "adlib", "sound-blaster", "opl", "pc-speaker"]
 categories = ["emulators", "game-development", "multimedia::audio"]
 include = ["src/**", "tests/**", "examples/**", "Cargo.toml", "README.md", "CHANGELOG.md", "THIRD-PARTY.md", "LICENSE*"]
 
