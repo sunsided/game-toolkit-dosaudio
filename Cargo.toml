@@ -13,7 +13,7 @@ authors = ["Markus Mayer"]
 readme = "README.md"
 keywords = ["dos", "adlib", "sound-blaster", "opl", "pc-speaker"]
 categories = ["emulators", "game-development", "multimedia::audio"]
-include = ["src/**", "tests/**", "examples/**", "Cargo.toml", "README.md", "CHANGELOG.md", "THIRD-PARTY.md", "LICENSE*"]
+include = ["/src/**", "/tests/**", "/examples/**", "/Cargo.toml", "/README.md", "/CHANGELOG.md", "/THIRD-PARTY.md", "/LICENSE*"]
 
 [package.metadata.release]
 pre-release-replacements = [
