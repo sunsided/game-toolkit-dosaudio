@@ -136,6 +136,16 @@ impl OfflineMachine {
         self.engine
             .play_at(sequence, PlayOptions::default(), self.now())
     }
+    /// Play a switchable soundtrack on the same offline synthesis timeline.
+    pub fn play_soundtrack(
+        &mut self,
+        soundtrack: std::sync::Arc<crate::Soundtrack>,
+        preferred: crate::MusicDevice,
+        options: crate::PlayOptions,
+    ) -> Result<MusicHandle> {
+        self.engine.play_soundtrack(soundtrack, preferred, options)
+    }
+
     /// Start an unsigned mono PCM buffer, serviced automatically as time advances.
     /// Keep its handle alive through rendering; the last byte gets a full hold interval.
     #[cfg(feature = "sb")]

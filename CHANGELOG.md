@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+- Add optional ROM-validated CM-32L synthesis for MT-32 arrangements, adapting
+  moont 1.0.0 with safe decoding and preallocated SysEx/reset/reverb resources.
+  Supports CM-32L control v1.00/v1.02 and full PCM images supplied by the caller.
+- Include the private core's LGPL-2.1-or-later notices and license texts; update
+  package SPDX metadata to account for included third-party source.
+- Add equal-timeline soundtrack arrangements, explicit device fallback and live
+  device switching, with bounded control-thread restoration checkpoints and
+  callback-safe ownership. Restored sounding notes retrigger their envelopes.
+- Add optional synthie 0.8.0 preparation into native PCM, starter-bank OPL and
+  monophonic speaker arrangements; native PCM output requires explicit opt-in.
+- Restore OPL2 mono routing when changing an OPL3 core's compatibility mode.
+- Add audible MT-32, synthie comparison and uninterrupted-switching demo tasks,
+  isolated feature checks and allocation/lifetime regression coverage.
+
 ## [0.1.3] - 2026-11-08
 
 - Add validated SBI/OP2/WOPL/AdLib BNK instrument banks and a small original starter set.

@@ -3,6 +3,10 @@ use crate::{Error, Frame, Result};
 use std::sync::Arc;
 #[cfg(feature = "gm")]
 mod gm;
+#[cfg(feature = "mt32")]
+mod mt32;
+#[cfg(feature = "mt32")]
+pub use mt32::{Mt32Model, Mt32Roms, Mt32Synth};
 #[cfg(feature = "mpu401")]
 pub(crate) mod voice;
 #[cfg(feature = "gm")]
@@ -19,6 +23,9 @@ pub enum MidiBackend {
     /// General MIDI synthesis using a caller-supplied SF2.
     #[cfg(feature = "gm")]
     Gm(Arc<SoundFont>),
+    /// CM-32L synthesis with caller-supplied, validated ROMs.
+    #[cfg(feature = "mt32")]
+    Mt32(Arc<Mt32Roms>),
 }
 impl core::fmt::Debug for MidiBackend {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -26,16 +33,29 @@ impl core::fmt::Debug for MidiBackend {
             Self::Custom(_) => f.write_str("Custom"),
             #[cfg(feature = "gm")]
             Self::Gm(_) => f.write_str("Gm"),
+            #[cfg(feature = "mt32")]
+            Self::Mt32(_) => f.write_str("Mt32"),
         }
     }
 }
 #[cfg(feature = "mpu401")]
 impl MidiBackend {
+    pub(crate) fn device(&self) -> crate::MusicDevice {
+        match self {
+            Self::Custom(_) => crate::MusicDevice::CustomMidi,
+            #[cfg(feature = "gm")]
+            Self::Gm(_) => crate::MusicDevice::GeneralMidi,
+            #[cfg(feature = "mt32")]
+            Self::Mt32(_) => crate::MusicDevice::Mt32,
+        }
+    }
     pub(crate) fn build(&self, rate: u32) -> Result<Box<dyn MidiSynth>> {
         match self {
             Self::Custom(factory) => factory(rate),
             #[cfg(feature = "gm")]
             Self::Gm(font) => Ok(Box::new(GmSynth::with_soundfont(Arc::clone(font), rate)?)),
+            #[cfg(feature = "mt32")]
+            Self::Mt32(roms) => Ok(Box::new(Mt32Synth::new(Arc::clone(roms))?)),
         }
     }
 }
@@ -86,4 +106,8 @@ pub trait MidiSynth: Send {
     fn message(&mut self, bytes: &[u8]);
     /// Generate the next native stereo frames.
     fn render(&mut self, out: &mut [Frame]);
+    /// Messages dropped by an optional bounded backend queue (zero by default).
+    fn dropped_messages(&self) -> u64 {
+        0
+    }
 }

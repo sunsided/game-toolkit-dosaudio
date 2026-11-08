@@ -16,6 +16,8 @@ pub enum MusicTarget {
     Speaker,
     /// Yamaha FM and SN76489 writes sharing one timeline.
     OplPsg(OplChip),
+    /// Prepared native stereo PCM (synthie feature).
+    Native,
 }
 
 /// Immutable, validated device events and owned SysEx storage.
@@ -33,6 +35,7 @@ pub struct PreparedMusic {
     pub(crate) loop_start: Tick,
     pub(crate) loop_index: usize,
     pub(crate) target: MusicTarget,
+    pub(crate) pcm: Option<Arc<NativePcm>>,
 }
 
 impl PreparedMusic {
@@ -114,6 +117,7 @@ impl PreparedMusic {
             loop_start: Tick::ZERO,
             loop_index: 0,
             target,
+            pcm: None,
         })
     }
 
@@ -176,6 +180,38 @@ impl From<Sequence> for PreparedMusic {
             loop_start: Tick::ZERO,
             loop_index: 0,
             target: MusicTarget::Opl(sequence.chip),
+            pcm: None,
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct NativePcm {
+    pub frames: Arc<[crate::Frame]>,
+    pub rate: u32,
+}
+impl PreparedMusic {
+    /// Prepare finite native PCM outside rendering. Available for synthie output
+    /// and shared soundtrack switching; playback supports the usual handles.
+    #[cfg(feature = "synthie")]
+    pub fn from_pcm(frames: impl Into<Arc<[crate::Frame]>>, sample_rate: u32) -> Result<Self> {
+        let frames = frames.into();
+        if !(8_000..=192_000).contains(&sample_rate) || frames.len() > 16_000_000 {
+            return Err(Error::Config(
+                "native PCM requires 8–192 kHz and at most 16 million frames",
+            ));
+        }
+        if frames.iter().flatten().any(|v| !v.is_finite()) {
+            return Err(Error::Format("native PCM contains non-finite samples"));
+        }
+        let duration = crate::TickAccumulator::new(u64::from(sample_rate))
+            .checked_advance(frames.len() as u64)
+            .ok_or(Error::TooLarge)?;
+        let mut music = Self::new(MusicTarget::Native, vec![], duration, [])?;
+        music.pcm = Some(Arc::new(NativePcm {
+            frames,
+            rate: sample_rate,
+        }));
+        Ok(music)
     }
 }

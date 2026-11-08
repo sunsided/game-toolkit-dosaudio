@@ -11,17 +11,42 @@ pub trait OplCore: Send {
     fn generate(&mut self) -> Frame;
 }
 
-struct OplonCore(oplon::Opl2);
+struct OplonCore {
+    chip: oplon::Opl2,
+    channels: [u8; 18],
+    opl3: bool,
+}
+impl OplonCore {
+    fn write_native(&mut self, register: u16, value: u8) {
+        if register < 0x100 {
+            self.chip.write_reg(register as u8, value);
+        } else {
+            self.chip.write_reg_high(register as u8, value);
+        }
+    }
+}
 impl OplCore for OplonCore {
     fn write(&mut self, register: u16, value: u8) {
-        if register < 0x100 {
-            self.0.write_reg(register as u8, value);
-        } else {
-            self.0.write_reg_high(register as u8, value);
+        if (0xc0..=0xc8).contains(&(register & 255)) {
+            self.channels[usize::from((register >> 8) * 9 + (register & 255) - 0xc0)] = value;
+        }
+        self.write_native(register, value);
+        if register == 0x105 && self.opl3 != (value & 1 != 0) {
+            self.opl3 = value & 1 != 0;
+            // oplon's OPL2 compatibility accepts pan hints and otherwise retains
+            // its last routing. A hardware mode transition must restore mono,
+            // while re-enabling OPL3 must use the actual saved C0 register bits.
+            for channel in 0..if self.opl3 { 18 } else { 9 } {
+                let raw = self.channels[channel];
+                self.write_native(
+                    0xc0 | ((channel / 9) as u16 * 256) | (channel % 9) as u16,
+                    if self.opl3 { raw } else { (raw & 15) | 0x30 },
+                );
+            }
         }
     }
     fn generate(&mut self) -> Frame {
-        let (left, right) = self.0.render_frame();
+        let (left, right) = self.chip.render_frame();
         [left as f32 / 32768.0, right as f32 / 32768.0]
     }
 }
@@ -43,7 +68,11 @@ impl OplCore for NukedCore {
 pub(crate) fn core(backend: OplBackend) -> Box<dyn OplCore> {
     match backend {
         // Equal native and output rates bypass the core's rate conversion.
-        OplBackend::Oplon => Box::new(OplonCore(oplon::Opl2::with_native_rate(49_716, 49_716))),
+        OplBackend::Oplon => Box::new(OplonCore {
+            chip: oplon::Opl2::with_native_rate(49_716, 49_716),
+            channels: [0; 18],
+            opl3: false,
+        }),
         #[cfg(feature = "nuked")]
         OplBackend::Nuked => Box::new(NukedCore(nuked_opl3::Opl3Chip::new(49_716))),
         OplBackend::Custom(factory) => factory(),

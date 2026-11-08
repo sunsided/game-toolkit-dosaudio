@@ -12,6 +12,10 @@ pub use runtime::MusicController;
 pub(crate) use runtime::{MusicCapabilities, MusicRequest, MusicRuntime, validate_play};
 mod prepared;
 pub use prepared::{MusicTarget, PreparedMusic};
+pub(crate) mod soundtrack;
+pub use soundtrack::{MusicDevice, Soundtrack};
+#[cfg(feature = "synthie")]
+pub mod synthie;
 
 /// A register write emitted by a prepared music sequence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -136,6 +140,9 @@ impl PlayOptions {
 }
 
 pub(crate) struct MusicState {
+    pub device: AtomicU32,
+    pub switch_request: AtomicU32,
+    pub device_routes: [u8; 9],
     pub paused: AtomicBool,
     pub stopped: AtomicBool,
     pub finished: AtomicBool,
@@ -158,6 +165,9 @@ impl MusicHandle {
     pub(crate) fn new(volume: f32, sample_rate: u32) -> Self {
         Self {
             state: Arc::new(MusicState {
+                device: AtomicU32::new(u32::MAX),
+                switch_request: AtomicU32::new(u32::MAX),
+                device_routes: [u8::MAX; 9],
                 paused: AtomicBool::new(false),
                 stopped: AtomicBool::new(false),
                 finished: AtomicBool::new(false),
@@ -169,6 +179,29 @@ impl MusicHandle {
             }),
         }
     }
+    /// Request an available soundtrack device (or its explicit fallback).
+    /// Applies at an output-frame boundary, retaining position, pause, fade and
+    /// loop state. Ordinary single-arrangement handles cannot switch devices.
+    pub fn switch_device(&self, device: MusicDevice) -> Result<()> {
+        if self.is_finished() {
+            return Err(Error::Config("finished music cannot switch devices"));
+        }
+        let selected = self.state.device_routes[device as usize];
+        if selected == u8::MAX {
+            return Err(Error::Config(
+                "soundtrack device or fallback is unavailable",
+            ));
+        }
+        self.state
+            .switch_request
+            .store(u32::from(selected), Ordering::Release);
+        Ok(())
+    }
+    /// Last applied soundtrack device, or none for ordinary prepared playback.
+    pub fn device(&self) -> Option<MusicDevice> {
+        MusicDevice::from_code(self.state.device.load(Ordering::Acquire))
+    }
+
     /// Pause sequencing and mute the FM output.
     pub fn pause(&self) {
         self.state.paused.store(true, Ordering::Release);
@@ -246,6 +279,7 @@ impl Drop for MusicHandle {
 
 pub(crate) struct Player {
     pub sequence: PreparedMusic,
+    pub soundtrack: Option<Arc<Soundtrack>>,
     pub state: Arc<MusicState>,
     pub options: PlayOptions,
     pub origin: Tick,
@@ -266,6 +300,7 @@ impl Player {
     ) -> Self {
         Self {
             sequence,
+            soundtrack: None,
             state: Arc::clone(&handle.state),
             options,
             origin,

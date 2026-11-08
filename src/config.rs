@@ -115,6 +115,7 @@ pub struct SoundConfig {
     pub(crate) dma16: u8,
     pub(crate) backend: OplBackend,
     pub(crate) speaker: bool,
+    pub(crate) native: bool,
     pub(crate) psg: bool,
     pub(crate) midi: Option<crate::MidiBackend>,
     pub(crate) midi_port: u16,
@@ -139,6 +140,7 @@ impl SoundConfig {
             dma16: 5,
             backend: OplBackend::Oplon,
             speaker: false,
+            native: false,
             psg: false,
             midi: None,
             midi_port: 0x330,
@@ -288,6 +290,14 @@ impl SoundConfig {
         self
     }
 
+    /// Enable prepared native PCM/synthie music alongside the hardware devices.
+    #[cfg(feature = "synthie")]
+    #[must_use]
+    pub fn native(mut self, enabled: bool) -> Self {
+        self.native = enabled;
+        self
+    }
+
     /// Install an MPU-401 UART and MIDI synthesis backend.
     #[must_use]
     pub fn mpu401(mut self, backend: crate::MidiBackend) -> Self {
@@ -299,6 +309,12 @@ impl SoundConfig {
     pub fn gm(font: std::sync::Arc<crate::SoundFont>) -> Self {
         Self::none().mpu401(crate::MidiBackend::Gm(font))
     }
+    /// CM-32L synthesis for MT-32 arrangements with caller-supplied ROMs.
+    #[cfg(feature = "mt32")]
+    pub fn mt32(roms: std::sync::Arc<crate::Mt32Roms>) -> Self {
+        Self::none().mpu401(crate::MidiBackend::Mt32(roms))
+    }
+
     /// Relocate the MPU-401 to an aligned base in 300h through 360h.
     #[must_use]
     pub fn midi_port(mut self, base: u16) -> Self {

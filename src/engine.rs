@@ -33,6 +33,7 @@ pub struct EngineStats {
 pub struct AudioEngine {
     rate: u32,
     latency: Tick,
+    native: bool,
     commands: Consumer<TimedCommand>,
     speaker: Option<SpeakerVoice>,
     #[cfg(feature = "mpu401")]
@@ -65,6 +66,7 @@ impl AudioEngine {
         Ok(Self {
             rate: config.sample_rate,
             latency: config.latency,
+            native: config.native,
             commands,
             #[cfg(feature = "mpu401")]
             midi,
@@ -109,6 +111,15 @@ impl AudioEngine {
         self.stats
     }
 
+    /// Dropped messages reported by a bounded MIDI synthesis backend.
+    pub fn midi_dropped_messages(&self) -> u64 {
+        #[cfg(feature = "mpu401")]
+        if let Some(midi) = &self.midi {
+            return midi.core.dropped_messages();
+        }
+        0
+    }
+
     /// Capture applied OPL writes from manual I/O, sequencers and live events.
     /// Create outside rendering; stop is acknowledged at the next frame start.
     /// The bounded writer stays owned by the engine after capture ends.
@@ -141,6 +152,7 @@ impl AudioEngine {
             && !capabilities.midi
             && !capabilities.psg
             && !capabilities.speaker
+            && !capabilities.native
         {
             return Err(Error::Config("runtime music requires installed hardware"));
         }
@@ -197,6 +209,8 @@ impl AudioEngine {
         let capabilities = MusicCapabilities {
             opl: None,
             midi: false,
+            midi_device: None,
+            native: false,
             psg: false,
             speaker: true,
         };
@@ -294,6 +308,127 @@ impl AudioEngine {
             .ok_or(Error::TooLarge)
     }
 
+    /// Start a soundtrack and prepare a switchable handle before streaming.
+    pub fn play_soundtrack(
+        &mut self,
+        soundtrack: std::sync::Arc<crate::Soundtrack>,
+        preferred: crate::MusicDevice,
+        options: PlayOptions,
+    ) -> Result<MusicHandle> {
+        let (handle, player) = crate::music::soundtrack::player(
+            soundtrack,
+            preferred,
+            self.capabilities(),
+            self.rate,
+            options,
+            self.now(),
+            self.now(),
+        )?;
+        self.release_notes();
+        if let Some(old) = self.player.replace(player) {
+            old.state
+                .finished
+                .store(true, std::sync::atomic::Ordering::Release);
+        }
+        Ok(handle)
+    }
+
+    fn switch_music_device(&mut self) {
+        use std::sync::atomic::Ordering;
+        let Some(player) = &self.player else {
+            return;
+        };
+        let requested = player.state.switch_request.swap(u32::MAX, Ordering::AcqRel);
+        let Some(device) = crate::MusicDevice::from_code(requested) else {
+            return;
+        };
+        if player.ended || player.state.device.load(Ordering::Relaxed) == requested {
+            return;
+        }
+        let position = Tick(
+            self.event_time
+                .0
+                .saturating_sub(player.origin.0)
+                .min(player.sequence.duration.0),
+        );
+        self.release_notes();
+        let player = self.player.as_mut().expect("active soundtrack");
+        let arrangement = player
+            .soundtrack
+            .as_ref()
+            .expect("switchable handle")
+            .find(device)
+            .expect("validated route");
+        let checkpoint = arrangement
+            .checkpoints
+            .partition_point(|c| c.at <= position)
+            .saturating_sub(1);
+        player.sequence = arrangement.music.clone();
+        player.index = arrangement.checkpoints[checkpoint].index;
+        let len = arrangement.checkpoints[checkpoint].events.len();
+        #[cfg(feature = "opl")]
+        if matches!(
+            self.player.as_ref().unwrap().sequence.target,
+            MusicTarget::Opl(crate::OplChip::Opl2)
+        ) && self
+            .opl
+            .as_ref()
+            .is_some_and(|o| o.chip == crate::OplChip::Opl3)
+        {
+            self.write_opl(0x105, 0);
+        }
+
+        for index in 0..len {
+            let event = self
+                .player
+                .as_ref()
+                .unwrap()
+                .soundtrack
+                .as_ref()
+                .unwrap()
+                .find(device)
+                .unwrap()
+                .checkpoints[checkpoint]
+                .events[index];
+            self.music_event(event);
+        }
+        self.player
+            .as_ref()
+            .unwrap()
+            .state
+            .device
+            .store(requested, Ordering::Release);
+    }
+
+    fn native_sample(&self, start: u128, denominator: u128) -> Frame {
+        let Some(player) = &self.player else {
+            return [0.0; 2];
+        };
+        if player
+            .state
+            .stopped
+            .load(std::sync::atomic::Ordering::Relaxed)
+            || player.was_paused
+        {
+            return [0.0; 2];
+        }
+        let Some(pcm) = &player.sequence.pcm else {
+            return [0.0; 2];
+        };
+        let elapsed = start.saturating_sub(u128::from(player.origin.0) * denominator);
+        let frame = elapsed * u128::from(pcm.rate) * u128::from(Tick::HZ_DENOMINATOR)
+            / (denominator * u128::from(Tick::HZ_NUMERATOR));
+        pcm.frames.get(frame as usize).copied().unwrap_or([0.0; 2])
+    }
+    fn soundtrack_mutes(&self, target: MusicTarget) -> bool {
+        self.player.as_ref().is_some_and(|p| {
+            p.soundtrack.is_some()
+                && p.sequence.target != target
+                && !(matches!(target, MusicTarget::Opl(_))
+                    && matches!(p.sequence.target, MusicTarget::Opl(_)))
+        })
+    }
+
     fn denominator(&self) -> u128 {
         u128::from(self.rate) * u128::from(Tick::HZ_DENOMINATOR)
     }
@@ -315,6 +450,16 @@ impl AudioEngine {
                     false
                 }
             },
+            midi_device: {
+                #[cfg(feature = "mpu401")]
+                {
+                    self.midi.as_ref().map(|m| m.device)
+                }
+                #[cfg(not(feature = "mpu401"))]
+                {
+                    None
+                }
+            },
             psg: {
                 #[cfg(feature = "psg")]
                 {
@@ -326,6 +471,7 @@ impl AudioEngine {
                 }
             },
             speaker: self.speaker.is_some(),
+            native: self.native,
         }
     }
 
@@ -366,6 +512,7 @@ impl AudioEngine {
                     }
                     player.prepare(at);
                     self.player = Some(player);
+                    self.switch_music_device();
                     self.sequence_due(at);
                     changed = true;
                 }
@@ -523,6 +670,14 @@ impl AudioEngine {
         if self
             .player
             .as_ref()
+            .is_some_and(|p| p.sequence.target == MusicTarget::Native)
+        {
+            return;
+        }
+
+        if self
+            .player
+            .as_ref()
             .is_some_and(|player| player.sequence.target == MusicTarget::Midi)
         {
             #[cfg(feature = "mpu401")]
@@ -598,6 +753,7 @@ impl AudioEngine {
             {
                 speaker.state.data = false;
             }
+            self.switch_music_device();
             let mut speaker_gain = self.speaker_player.as_mut().map_or(1.0, Player::gain);
             let mut gain = self.player.as_mut().map_or(1.0, Player::gain);
             let mut cursor = start;
@@ -716,6 +872,11 @@ impl AudioEngine {
                             let _ = channel;
                             f64::from(value)
                         };
+                        let value = if self.soundtrack_mutes(MusicTarget::Opl(opl.chip)) {
+                            0.0
+                        } else {
+                            value
+                        };
                         *area += value
                             * (to - from)
                             * if self.runtime.is_some()
@@ -744,7 +905,14 @@ impl AudioEngine {
                         1.0
                     };
                     for (area, sample) in extra_area.iter_mut().zip(midi.held) {
-                        *area += f64::from(sample) * (to - from) * gain;
+                        *area += f64::from(sample)
+                            * (to - from)
+                            * gain
+                            * if self.soundtrack_mutes(MusicTarget::Midi) {
+                                0.0
+                            } else {
+                                1.0
+                            };
                     }
                 }
                 #[cfg(feature = "psg")]
@@ -757,7 +925,14 @@ impl AudioEngine {
                         1.0
                     };
                     for (area, sample) in extra_area.iter_mut().zip(psg.held) {
-                        *area += f64::from(sample) * (to - from) * gain;
+                        *area += f64::from(sample)
+                            * (to - from)
+                            * gain
+                            * if self.soundtrack_mutes(MusicTarget::Psg) {
+                                0.0
+                            } else {
+                                1.0
+                            };
                     }
                 }
                 cursor = next;
@@ -778,7 +953,16 @@ impl AudioEngine {
             } else {
                 1.0
             };
-            let speaker = speaker * speaker_gain as f32;
+            let speaker = speaker
+                * speaker_gain as f32
+                * if self.speaker_player.is_none() && self.soundtrack_mutes(MusicTarget::Speaker) {
+                    0.0
+                } else {
+                    1.0
+                };
+            let native = self
+                .native_sample(start, denominator)
+                .map(|s| s * gain as f32);
             #[cfg(feature = "sb")]
             let pcm = core::array::from_fn::<_, 2, _>(|channel| {
                 let mean = dac_area[channel] / width;
@@ -810,11 +994,13 @@ impl AudioEngine {
                 (speaker
                     + pcm[0]
                     + (extra_area[0] / width) as f32
+                    + native[0]
                     + (opl_area[0] / width * gain) as f32)
                     .clamp(-1.0, 1.0),
                 (speaker
                     + pcm[1]
                     + (extra_area[1] / width) as f32
+                    + native[1]
                     + (opl_area[1] / width * gain) as f32)
                     .clamp(-1.0, 1.0),
             ];

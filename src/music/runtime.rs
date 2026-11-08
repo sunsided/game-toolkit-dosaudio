@@ -40,8 +40,10 @@ pub(crate) struct MusicRuntime {
 pub(crate) struct MusicCapabilities {
     pub opl: Option<OplChip>,
     pub midi: bool,
+    pub midi_device: Option<super::MusicDevice>,
     pub psg: bool,
     pub speaker: bool,
+    pub native: bool,
 }
 impl MusicCapabilities {
     fn has_opl(self, needed: OplChip) -> bool {
@@ -51,6 +53,7 @@ impl MusicCapabilities {
         match target {
             MusicTarget::Opl(c) => self.has_opl(c),
             MusicTarget::Midi => self.midi,
+            MusicTarget::Native => self.native,
             MusicTarget::Psg => self.psg,
             MusicTarget::Speaker => self.speaker,
             MusicTarget::OplPsg(c) => self.has_opl(c) && self.psg,
@@ -179,6 +182,32 @@ impl MusicController {
         }
         Ok(handle)
     }
+    /// Start a prepared multi-device soundtrack through the runtime queue.
+    pub fn play_soundtrack(
+        &mut self,
+        soundtrack: std::sync::Arc<super::Soundtrack>,
+        preferred: super::MusicDevice,
+        options: PlayOptions,
+    ) -> Result<MusicHandle> {
+        self.reclaim();
+        let (handle, player) = super::soundtrack::player(
+            soundtrack,
+            preferred,
+            self.capabilities,
+            self.rate,
+            options,
+            self.now(),
+            self.now(),
+        )?;
+        self.requests
+            .push(ScheduledRequest {
+                at: None,
+                request: MusicRequest::Replace(player),
+            })
+            .map_err(|_| Error::QueueFull)?;
+        Ok(handle)
+    }
+
     /// Submit a live chip event at the next output position. No allocation.
     pub fn send_event(&mut self, event: MusicEvent) -> Result<()> {
         self.enqueue_event(None, event)

@@ -13,6 +13,8 @@ tasks:
       - cargo test --all-features --locked {{.CLI_ARGS}}
       - cargo test --no-default-features --features sb,formats --locked {{.CLI_ARGS}}
       - cargo test --no-default-features --features gm,formats --locked {{.CLI_ARGS}}
+      - cargo test --no-default-features --features mt32,formats --locked {{.CLI_ARGS}}
+      - cargo test --no-default-features --features synthie --locked {{.CLI_ARGS}}
       - cargo test --no-default-features --features psg,formats --locked {{.CLI_ARGS}}
       - cargo test --no-default-features --locked {{.CLI_ARGS}}
   check:
@@ -23,6 +25,8 @@ tasks:
       - cargo clippy --all-targets --no-default-features --locked -- -D warnings
       - cargo clippy --all-targets --no-default-features --features formats --locked -- -D warnings
       - cargo clippy --all-targets --no-default-features --features opl,formats --locked -- -D warnings
+      - cargo clippy --all-targets --no-default-features --features mt32,formats --locked -- -D warnings
+      - cargo clippy --all-targets --no-default-features --features synthie --locked -- -D warnings
       - cargo clippy --all-targets --no-default-features --features gm,formats --locked -- -D warnings
       - cargo clippy --all-targets --no-default-features --features psg,formats --locked -- -D warnings
       - task: docs
@@ -89,6 +93,49 @@ tasks:
     desc: Render patch helpers and percussion without playback
     cmds:
       - cargo run --no-default-features --features opl,formats --locked --example opl_patches -- target/opl_patches.wav
+  demo:mt32:
+    desc: Hear CM-32L synthesis using your ROMs (ROMS=/path/to/rom-directory)
+    requires:
+      vars: [ROMS]
+    cmds:
+      - task: render:mt32
+        vars: {ROMS: '{{.ROMS}}'}
+      - task: play:wav
+        vars: {WAV: target/mt32.wav}
+  render:mt32:
+    desc: Render MT-32 music with caller-supplied CM-32L control/PCM ROMs
+    requires:
+      vars: [ROMS]
+    env:
+      DOSAUDIO_DEMO_ROMS: '{{.ROMS}}'
+    cmds:
+      - cargo run --no-default-features --features mt32,formats --locked --example mt32 -- "$DOSAUDIO_DEMO_ROMS" target/mt32.wav
+  demo:synthie:
+    desc: Hear the same original song as native synthie, OPL and speaker
+    cmds:
+      - for: [native, opl, speaker]
+        task: demo:synthie-output
+        vars: {MODE: '{{.ITEM}}'}
+  demo:synthie-output:
+    desc: Hear one synthie arrangement (MODE=native|opl|speaker|switch)
+    vars:
+      MODE: '{{.MODE | default "native"}}'
+    cmds:
+      - task: render:synthie
+        vars: {MODE: '{{.MODE}}'}
+      - task: play:wav
+        vars: {WAV: 'target/synthie_{{.MODE}}.wav'}
+  demo:switch:
+    desc: Hear native-to-OPL-to-speaker switching while the original song continues
+    cmds:
+      - task: demo:synthie-output
+        vars: {MODE: switch}
+  render:synthie:
+    desc: Render a synthie arrangement or device switch without playback
+    vars:
+      MODE: '{{.MODE | default "switch"}}'
+    cmds:
+      - cargo run --no-default-features --features synthie --locked --example synthie_compare -- '{{.MODE}}' 'target/synthie_{{.MODE}}.wav'
   demo:music:
     desc: Play runtime FM replacement and volume fades live
     cmds:

@@ -38,8 +38,12 @@ jobs:
       - run: cargo clippy --all-targets --no-default-features --locked -- -D warnings
       - run: cargo clippy --all-targets --no-default-features --features formats --locked -- -D warnings
       - run: cargo clippy --all-targets --no-default-features --features opl,formats --locked -- -D warnings
+      - run: cargo clippy --all-targets --no-default-features --features mt32,formats --locked -- -D warnings
+      - run: cargo clippy --all-targets --no-default-features --features synthie --locked -- -D warnings
       - run: cargo test --no-default-features --features sb,formats --locked
       - run: cargo test --no-default-features --features gm,formats --locked
+      - run: cargo test --no-default-features --features mt32,formats --locked
+      - run: cargo test --no-default-features --features synthie --locked
       - run: cargo test --no-default-features --features psg,formats --locked
       - run: cargo test --all-features --locked
       - run: cargo test --all-features --release --locked

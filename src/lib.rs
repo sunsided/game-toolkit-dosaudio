@@ -58,9 +58,11 @@ pub use game_toolkit_dosbus::{
 #[cfg(feature = "gm")]
 pub use midi::{GmSynth, SoundFont};
 pub use midi::{MidiBackend, MidiMessage, MidiSynth};
+#[cfg(feature = "mt32")]
+pub use midi::{Mt32Model, Mt32Roms, Mt32Synth};
 pub use music::{
-    MusicController, MusicEvent, MusicHandle, MusicTarget, PlayOptions, PreparedMusic, Sequence,
-    TimedEvent,
+    MusicController, MusicDevice, MusicEvent, MusicHandle, MusicTarget, PlayOptions, PreparedMusic,
+    Sequence, Soundtrack, TimedEvent,
 };
 pub use offline::{OfflineMachine, Wav};
 #[cfg(feature = "opl")]
@@ -92,4 +94,10 @@ pub mod prelude {
         Drum, Note, Opl, OplBank, OplBankEntry, OplBankKey, OplInstrument, OplMidiDriver,
         OplOperator, OplPatch,
     };
+    pub use crate::{MusicDevice, Soundtrack};
 }
+
+// Compiles the README examples, which use default-feature APIs.
+#[cfg(all(doctest, feature = "sb", feature = "formats", feature = "toolkit"))]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

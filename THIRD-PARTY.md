@@ -8,13 +8,24 @@
 | game-toolkit-audio 0.11 | EUPL-1.2 | Optional output host, with its transitive dependencies |
 | nuked-opl3 0.1 | LGPL-2.1-or-later | Optional reference synthesis core |
 | rustysynth 1.3.8 | MIT | Optional caller-supplied SF2 synthesis |
+| sha1 0.10 | MIT OR Apache-2.0 | Optional ROM identity checks |
+| synthie 0.8.0 | EUPL-1.2 | Optional control-thread native synthesis and song model |
+| moont 1.0.0 (adapted, included source) | LGPL-2.1-or-later | Optional private CM-32L core |
 | midly 0.5.3 | MIT OR Apache-2.0 | Optional SMF event decoding |
 | allocation-counter 0.8 | MIT OR Apache-2.0 | Test-only allocator instrumentation |
 
 Cargo resolves dependencies under their own licenses. The audio crate's source
-license does not change the terms of a combined build. No chip-core source,
-firmware ROMs, SoundFonts, extracted instrument banks, or third-party songs are
-vendored here. Dependency source packages retain their own notices.
+license does not change the terms of a combined build. Dependency source
+packages retain their own notices. No firmware ROMs, SoundFonts, extracted
+instrument banks or third-party songs are vendored here.
+
+The private CM-32L core in `src/midi/mt32/cm32l.rs` and `src/midi/mt32/cm32l/`
+is adapted from moont 1.0.0 and retains upstream copyright notices under
+LGPL-2.1-or-later. See [UPSTREAM.md](src/midi/mt32/cm32l/UPSTREAM.md) for
+source/archive provenance, local modifications, and the included LGPL/GPL
+license texts. It compiles only with `mt32`, but its source is included in the
+package; the Cargo license expression accounts for this. Separately authored
+dosaudio code remains EUPL-1.2 OR MIT OR Apache-2.0.
 
 The OPL starter instruments in `src/opl/bank/starter.rs` are original register
 values authored for this crate on 2026-11-08, under the crate's triple license.

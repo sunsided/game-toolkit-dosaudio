@@ -3,6 +3,7 @@ const SYSEX_CAPACITY: usize = 65_536;
 
 pub(crate) struct MidiVoice {
     pub core: Box<dyn MidiSynth>,
+    pub device: crate::MusicDevice,
     pub held: Frame,
     pub next: Tick,
     clock: TickAccumulator,
@@ -23,6 +24,7 @@ impl MidiVoice {
         }
         Ok(Self {
             core,
+            device: backend.device(),
             held: [0.0; 2],
             next: Tick::ZERO,
             clock: TickAccumulator::new(u64::from(native)),
