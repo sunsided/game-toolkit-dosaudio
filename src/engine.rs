@@ -152,23 +152,38 @@ impl AudioEngine {
 
     /// Independently sequence a speaker melody or PWM stream alongside FM/MIDI music.
     /// Construction/replacement allocates only on the caller's thread.
+    /// The melody starts at the engine's current output time, like `play`.
     pub fn play_speaker(
         &mut self,
         music: impl Into<PreparedMusic>,
         options: PlayOptions,
     ) -> Result<crate::SpeakerHandle> {
+        self.play_speaker_at(music, options, self.now())
+    }
+
+    /// Start a speaker melody at a future absolute output timestamp, such as
+    /// machine time on a host that renders behind it. Allocates like `play_speaker`.
+    pub fn play_speaker_at(
+        &mut self,
+        music: impl Into<PreparedMusic>,
+        options: PlayOptions,
+        at: Tick,
+    ) -> Result<crate::SpeakerHandle> {
+        if at < self.now() {
+            return Err(Error::BackwardsTime);
+        }
         let music = music.into();
         if music.target != MusicTarget::Speaker {
             return Err(Error::Config("speaker playback requires speaker events"));
         }
-        validate_play(self.capabilities(), &music, options, self.now())?;
+        validate_play(self.capabilities(), &music, options, at)?;
         if let Some(old) = self.speaker_player.take() {
             old.state
                 .finished
                 .store(true, std::sync::atomic::Ordering::Release);
         }
         let handle = MusicHandle::new(options.volume, self.rate);
-        self.speaker_player = Some(Player::new(music, options, &handle, self.now(), self.now()));
+        self.speaker_player = Some(Player::new(music, options, &handle, at, self.now()));
         Ok(crate::SpeakerHandle::new(handle))
     }
 

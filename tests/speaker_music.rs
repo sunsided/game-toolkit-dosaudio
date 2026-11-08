@@ -231,6 +231,54 @@ fn pwm_is_audible_chunk_independent_and_silent_for_zero_duty() {
 }
 
 #[test]
+fn play_speaker_at_waits_for_its_start_tick_and_rejects_the_past() {
+    let (_, mut engine) =
+        DosAudio::split(SoundConfig::none().speaker(true).latency(Tick::ZERO)).unwrap();
+    let start_frame = engine.sample_rate() as usize / 20;
+    let _handle = engine
+        .play_speaker_at(
+            prepared("ML T120 O3 A4"),
+            PlayOptions::default(),
+            ticks(1, 20),
+        )
+        .unwrap();
+    let mut frames = vec![[0.0; 2]; 2 * start_frame];
+    engine.render(&mut frames);
+    assert!(
+        frames[..start_frame - 1]
+            .iter()
+            .all(|frame| *frame == [0.0; 2])
+    );
+    assert!(
+        frames[start_frame..]
+            .iter()
+            .any(|frame| frame[0].abs() > 0.01)
+    );
+    assert!(matches!(
+        engine.play_speaker_at(prepared("A"), PlayOptions::default(), Tick::ZERO),
+        Err(game_toolkit_dosaudio::Error::BackwardsTime)
+    ));
+}
+
+#[test]
+fn speaker_tone_reports_gated_pit_tones_only() {
+    let (mut dos, _engine) = DosAudio::split(SoundConfig::none().speaker(true)).unwrap();
+    assert_eq!(dos.speaker_tone(), None);
+    dos.outb(0x43, 0xb6);
+    dos.outb(0x42, 0xa9);
+    dos.outb(0x42, 0x04); // divisor 1193
+    dos.outb(0x61, 0x03);
+    let hz = dos.speaker_tone().unwrap();
+    assert!((hz - 1_000.15).abs() < 0.01, "{hz}");
+    dos.outb(0x61, 0x02); // gate off: bit-banged data
+    assert_eq!(dos.speaker_tone(), None);
+    dos.outb(0x61, 0x01);
+    assert_eq!(dos.speaker_tone(), None);
+    let (absent, _engine) = DosAudio::split(SoundConfig::none()).unwrap();
+    assert_eq!(absent.speaker_tone(), None);
+}
+
+#[test]
 fn speaker_handles_pause_resume_volume_stop_and_clone_lifetime() {
     let (_, mut engine) = DosAudio::split(SoundConfig::none().speaker(true)).unwrap();
     let handle = engine

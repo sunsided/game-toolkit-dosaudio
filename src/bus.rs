@@ -168,6 +168,19 @@ impl DosAudio {
         self.now
     }
 
+    /// Frequency in hertz of the PIT tone that speaker port I/O currently plays.
+    ///
+    /// `None` when the speaker is absent or port 61h has the PIT gate (bit 0) or
+    /// speaker data (bit 1) clear, which includes bit-banged output. Melodies from
+    /// [`AudioEngine::play_speaker`] run on the engine and are not reflected.
+    pub fn speaker_tone(&self) -> Option<f64> {
+        let state = self.speaker?.state;
+        (state.gate && state.data).then(|| {
+            Tick::HZ_NUMERATOR as f64
+                / (Tick::HZ_DENOMINATOR as f64 * 12.0 * f64::from(state.divisor))
+        })
+    }
+
     /// Advance machine time without consuming wall time.
     pub fn advance(&mut self, duration: Tick) {
         self.advance_to(self.now + duration);

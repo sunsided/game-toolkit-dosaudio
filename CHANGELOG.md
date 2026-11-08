@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Add `DosAudio::speaker_tone`, the frequency of the gated PIT tone port I/O plays.
+- Add `AudioEngine::play_speaker_at` to start a speaker melody at a given output tick.
+
 ## [0.1.0] - 2026-11-08
 
 `Error` and `MusicEvent` are `#[non_exhaustive]`: matches need a wildcard arm, and
