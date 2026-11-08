@@ -2,7 +2,7 @@
 use crate::{Error, OplChip, Result, Tick};
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
@@ -142,6 +142,8 @@ pub(crate) struct MusicState {
     gain_request: AtomicU64,
     sample_rate: u32,
     pub position: AtomicU64,
+    /// PIT divisor of the sounding speaker note, or 0 when none sounds.
+    pub tone: AtomicU32,
     handles: AtomicUsize,
 }
 
@@ -162,6 +164,7 @@ impl MusicHandle {
                 gain_request: AtomicU64::new(u64::from(volume.to_bits())),
                 sample_rate,
                 position: AtomicU64::new(0),
+                tone: AtomicU32::new(0),
                 handles: AtomicUsize::new(1),
             }),
         }

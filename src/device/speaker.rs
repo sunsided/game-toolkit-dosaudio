@@ -1,5 +1,10 @@
 use crate::Tick;
 
+/// Square-wave frequency in hertz for a PIT channel 2 divisor.
+pub(crate) fn pit_hz(divisor: u32) -> f64 {
+    Tick::HZ_NUMERATOR as f64 / (Tick::HZ_DENOMINATOR as f64 * 12.0 * f64::from(divisor))
+}
+
 /// PIT channel 2 waveform state; passed by value to the synthesis thread.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct SpeakerState {

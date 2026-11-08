@@ -279,6 +279,36 @@ fn speaker_tone_reports_gated_pit_tones_only() {
 }
 
 #[test]
+fn speaker_handle_tone_follows_notes_rests_pause_and_end() {
+    let (_, mut engine) =
+        DosAudio::split(SoundConfig::none().speaker(true).latency(Tick::ZERO)).unwrap();
+    let melody = prepared("ML T120 O3 A4 P4");
+    let divisor = u32::from(pitches(&melody)[0]);
+    let expected =
+        Tick::HZ_NUMERATOR as f64 / (Tick::HZ_DENOMINATOR * 12) as f64 / f64::from(divisor);
+    let handle = engine.play_speaker(melody, PlayOptions::default()).unwrap();
+    let quarter = engine.sample_rate() as usize / 2;
+    let mut frames = vec![[0.0; 2]; quarter / 2];
+    engine.render(&mut frames);
+    let hz = handle.tone().unwrap();
+    assert!((hz - expected).abs() < 1e-9, "{hz}");
+    handle.pause();
+    assert_eq!(handle.tone(), None);
+    handle.resume();
+    engine.render(&mut frames);
+    engine.render(&mut frames);
+    assert_eq!(handle.tone(), None, "rest");
+    engine.render(&mut vec![[0.0; 2]; quarter]);
+    assert!(handle.is_finished());
+    assert_eq!(handle.tone(), None);
+
+    let pwm = speaker_pwm(&[255, 0].repeat(64), 8_000).unwrap();
+    let handle = engine.play_speaker(pwm, PlayOptions::default()).unwrap();
+    engine.render(&mut frames[..16]);
+    assert_eq!(handle.tone(), None);
+}
+
+#[test]
 fn speaker_handles_pause_resume_volume_stop_and_clone_lifetime() {
     let (_, mut engine) = DosAudio::split(SoundConfig::none().speaker(true)).unwrap();
     let handle = engine

@@ -40,6 +40,16 @@ impl SpeakerHandle {
     pub fn position(&self) -> Tick {
         self.0.position()
     }
+    /// Frequency in hertz of the note this track sounds, as of the last render.
+    ///
+    /// `None` during rests and PWM streams, while paused, and once the track has
+    /// finished or stopped. Speaker port I/O is reported by
+    /// [`DosAudio::speaker_tone`](crate::DosAudio::speaker_tone) instead.
+    pub fn tone(&self) -> Option<f64> {
+        let divisor = self.0.state.tone.load(std::sync::atomic::Ordering::Relaxed);
+        (divisor != 0 && !self.is_paused() && !self.is_finished())
+            .then(|| crate::device::speaker::pit_hz(divisor))
+    }
 }
 
 /// A finite, prepared subset of the QBasic PLAY music macro language.

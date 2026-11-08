@@ -384,6 +384,25 @@ impl AudioEngine {
             let player = self.player.as_mut().expect("scheduled player");
             let event = player.pop();
             let ended = player.ended;
+            // Published for `SpeakerHandle::tone`; PWM levels have no pitch.
+            match event {
+                Some(MusicEvent::Speaker { divisor, enabled }) => {
+                    let divisor = match (enabled, divisor) {
+                        (false, _) => 0,
+                        (true, 0) => 65_536,
+                        (true, divisor) => u32::from(divisor),
+                    };
+                    player
+                        .state
+                        .tone
+                        .store(divisor, std::sync::atomic::Ordering::Relaxed);
+                }
+                Some(MusicEvent::SpeakerLevel(_)) => player
+                    .state
+                    .tone
+                    .store(0, std::sync::atomic::Ordering::Relaxed),
+                _ => {}
+            }
             if let Some(event) = event {
                 self.music_event(event);
             }

@@ -175,10 +175,7 @@ impl DosAudio {
     /// [`AudioEngine::play_speaker`] run on the engine and are not reflected.
     pub fn speaker_tone(&self) -> Option<f64> {
         let state = self.speaker?.state;
-        (state.gate && state.data).then(|| {
-            Tick::HZ_NUMERATOR as f64
-                / (Tick::HZ_DENOMINATOR as f64 * 12.0 * f64::from(state.divisor))
-        })
+        (state.gate && state.data).then(|| crate::device::speaker::pit_hz(state.divisor))
     }
 
     /// Advance machine time without consuming wall time.
