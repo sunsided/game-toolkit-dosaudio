@@ -8,10 +8,12 @@ tasks:
     cmds:
       - cargo build --all-targets --locked {{.CLI_ARGS}}
   test:
-    desc: Test all chip backends and the speaker-only build
+    desc: Test chip backends, optional MIDI/PSG and the speaker-only build
     cmds:
       - cargo test --all-features --locked {{.CLI_ARGS}}
       - cargo test --no-default-features --features sb,formats --locked {{.CLI_ARGS}}
+      - cargo test --no-default-features --features gm,formats --locked {{.CLI_ARGS}}
+      - cargo test --no-default-features --features psg,formats --locked {{.CLI_ARGS}}
       - cargo test --no-default-features --locked {{.CLI_ARGS}}
   check:
     desc: Check formatting, feature combinations, docs and WebAssembly
@@ -21,6 +23,8 @@ tasks:
       - cargo clippy --all-targets --no-default-features --locked -- -D warnings
       - cargo clippy --all-targets --no-default-features --features formats --locked -- -D warnings
       - cargo clippy --all-targets --no-default-features --features opl,formats --locked -- -D warnings
+      - cargo clippy --all-targets --no-default-features --features gm,formats --locked -- -D warnings
+      - cargo clippy --all-targets --no-default-features --features psg,formats --locked -- -D warnings
       - task: docs
       - cargo check --lib --all-features --target wasm32-unknown-unknown --locked
   docs:
@@ -60,6 +64,78 @@ tasks:
     desc: Render the buffered Sound Blaster chirp to target/pcm_buffer.wav
     cmds:
       - cargo run --no-default-features --features sb --locked --example pcm_buffer -- target/pcm_buffer.wav
+  demo:music:
+    desc: Play runtime FM replacement and volume fades live
+    cmds:
+      - cargo run --no-default-features --features opl,toolkit --locked --example live_music
+  demo:model:
+    desc: Render and play one Sound Blaster model (MODEL=sb1|sb2|pro|pro2|sb16)
+    vars:
+      MODEL: '{{.MODEL | default "sb16"}}'
+    cmds:
+      - task: render:model
+        vars: {MODEL: '{{.MODEL}}'}
+      - task: play:wav
+        vars: {WAV: 'target/sb_{{.MODEL}}.wav'}
+  demo:models:
+    desc: Hear SB1, SB2, Pro, Pro2 and signed 16-bit stereo SB16 in order
+    cmds:
+      - for: [sb1, sb2, pro, pro2, sb16]
+        task: demo:model
+        vars: {MODEL: '{{.ITEM}}'}
+  render:model:
+    desc: Render a selected Sound Blaster model without playback
+    vars:
+      MODEL: '{{.MODEL | default "sb16"}}'
+    cmds:
+      - cargo run --no-default-features --features sb --locked --example sb_models -- '{{.MODEL}}' 'target/sb_{{.MODEL}}.wav'
+  demo:dma:
+    desc: Hear four mixed effects with memory-backed DMA and 40 IRQ refills
+    cmds:
+      - task: render:dma
+      - task: play:wav
+        vars: {WAV: target/dma_refill.wav}
+  render:dma:
+    desc: Render memory DMA and overlapping effects without playback
+    cmds:
+      - cargo run --no-default-features --features sb --locked --example dma_refill -- target/dma_refill.wav
+  demo:speaker:
+    desc: Hear an original QBasic PLAY phrase followed by PWM
+    cmds:
+      - task: render:speaker
+      - task: play:wav
+        vars: {WAV: target/speaker.wav}
+  render:speaker:
+    desc: Render PLAY and PWM without playback
+    cmds:
+      - cargo run --no-default-features --locked --example speaker -- target/speaker.wav
+  demo:psg:
+    desc: Hear a Tandy PSG arpeggio with noise percussion
+    cmds:
+      - task: render:psg
+      - task: play:wav
+        vars: {WAV: target/psg.wav}
+  render:psg:
+    desc: Render the PSG arpeggio without playback
+    cmds:
+      - cargo run --no-default-features --features psg --locked --example psg -- target/psg.wav
+  demo:gm:
+    desc: Hear an original MIDI phrase (SF2=/path/to/font.sf2)
+    requires:
+      vars: [SF2]
+    cmds:
+      - task: render:gm
+        vars: {SF2: '{{.SF2}}'}
+      - task: play:wav
+        vars: {WAV: target/gm.wav}
+  render:gm:
+    desc: Render General MIDI using a caller-supplied SF2
+    requires:
+      vars: [SF2]
+    env:
+      DOSAUDIO_DEMO_SF2: '{{.SF2}}'
+    cmds:
+      - cargo run --no-default-features --features gm --locked --example gm -- "$DOSAUDIO_DEMO_SF2" target/gm.wav
   play:wav:
     internal: true
     env:
