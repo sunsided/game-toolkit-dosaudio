@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-08
+
 - Add optional ROM-validated CM-32L synthesis for MT-32 arrangements, adapting
   moont 1.0.0 with safe decoding and preallocated SysEx/reset/reverb resources.
   Supports CM-32L control v1.00/v1.02 and full PCM images supplied by the caller.
@@ -67,7 +69,8 @@ new variants in later releases are not breaking.
   automatic DSP DMA servicing, transactional time advances, combined music/PCM
   offline rendering, and live/render task demos.
 
-[Unreleased]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.0...v0.1.1
