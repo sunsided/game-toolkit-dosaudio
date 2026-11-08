@@ -64,6 +64,31 @@ tasks:
     desc: Render the buffered Sound Blaster chirp to target/pcm_buffer.wav
     cmds:
       - cargo run --no-default-features --features sb --locked --example pcm_buffer -- target/pcm_buffer.wav
+  demo:opl-midi:
+    desc: Hear original MIDI on AdLib, dual OPL2 or OPL3 (CHIP=opl2|dual|opl3)
+    vars:
+      CHIP: '{{.CHIP | default "opl2"}}'
+    cmds:
+      - task: render:opl-midi
+        vars: {CHIP: '{{.CHIP}}'}
+      - task: play:wav
+        vars: {WAV: 'target/opl_midi_{{.CHIP}}.wav'}
+  render:opl-midi:
+    desc: Compile original MIDI into OPL writes and render without playback
+    vars:
+      CHIP: '{{.CHIP | default "opl2"}}'
+    cmds:
+      - cargo run --no-default-features --features opl,formats --locked --example opl_midi -- '{{.CHIP}}' 'target/opl_midi_{{.CHIP}}.wav'
+  demo:opl-patches:
+    desc: Hear six original OPL patches and five hardware rhythm drums
+    cmds:
+      - task: render:opl-patches
+      - task: play:wav
+        vars: {WAV: target/opl_patches.wav}
+  render:opl-patches:
+    desc: Render patch helpers and percussion without playback
+    cmds:
+      - cargo run --no-default-features --features opl,formats --locked --example opl_patches -- target/opl_patches.wav
   demo:music:
     desc: Play runtime FM replacement and volume fades live
     cmds:

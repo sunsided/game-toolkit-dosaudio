@@ -6,9 +6,9 @@ Tandy PSG and MPU-401 MIDI, sharing the clock and I/O interfaces of
 
 It covers SB1/2/Pro/Pro2/16 with conventional-memory DMA, a fixed-voice SFX
 mixer, runtime music replacement/fades, QBasic `PLAY` and PWM, PSG, MIDI
-UART/General MIDI, SMF/VGM readers and sequenced OPL capture. MT-32, instrument
-bank readers/OPL MIDI driving, arrangement selection/switching and synthie
-integration are not implemented yet.
+UART/General MIDI, SMF/VGM readers, sequenced OPL capture, instrument-bank
+loading and MIDI driving on OPL. MT-32, arrangement selection/switching and
+synthie integration are not implemented yet.
 
 ## Render without an audio device
 
@@ -257,6 +257,64 @@ Pro's common OPL address pair broadcasts to both logical chips; dedicated pairs
 retain independent latches. SB16 resource register changes select DMA/IRQ lines.
 Mixer gain steps and filter curves are approximations documented in source.
 
+## MIDI on AdLib and instrument banks
+
+`OplMidiDriver` turns MIDI into writes for the installed FM chip. It supports
+OPL2's nine voices and dual OPL2/OPL3's eighteen, including layered two-voice
+instruments and deterministic stealing of the oldest complete note. It uses the
+same patch-register mapping and concert tuning as `ports.opl()` and works with
+oplon, Nuked and custom `OplCore` implementations.
+
+```rust
+use game_toolkit_dosaudio::prelude::*;
+
+let midi = Smf::load(&std::fs::read("song.mid")?)?;
+let driver = OplMidiDriver::with_starter_bank(OplChip::Opl2);
+let mut machine = OfflineMachine::new(SoundConfig::adlib(), 48_000)?;
+let _music = machine.play(driver.prepare(&midi)?)?;
+std::fs::write("song.wav", machine.render_to_end()?.to_bytes()?)?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+Preparation happens on the calling thread; runtime `MusicController::play` can
+install the result without restarting the stream. `driver.message(message, emit)`
+is an allocation-free register writer for custom integrations.
+`driver.write_message(&mut ports, message)` commits a complete live message
+through the normal port queue at the machine timestamp, including fixed latency,
+SB aliases and capture. Queue overflow leaves hardware and driver state unchanged.
+Initialize with at least 128 queue slots to accommodate either dual-chip setup.
+Keep raw FM writes and the driver from independently controlling the same chip;
+a MIDI FFh reset reinitializes its cached state before returning ownership.
+
+The driver handles bank/program changes, channel volume, expression, sustain,
+pitch bend (RPN0 sensitivity), pan and all-notes/all-sound/reset-controller
+messages. Gain multiplies velocity, volume and expression, then rounds to OPL's
+0.75 dB attenuation steps. Channel 10 uses bank percussion on ordinary melodic
+voices; the separate patch demo uses actual hardware rhythm mode. OPL3 pan has
+left/center/right routing. Dual OPL2 assigns new notes to a physical side; pan
+changes leave active notes on that side. Aftertouch, modulation and vendor SysEx
+are ignored; universal GM System On resets the driver. Compiled loops restore a
+register snapshot at the repeat boundary; notes crossing that point retrigger
+their envelopes. Output preparation is limited to one million writes.
+
+`OplBank::starter()` supplies six original melodic patches and five percussion
+patches. It is a small starter set, not a complete GM bank. Exact lookup uses
+`OplBankKey`; `insert` validates replacement entries outside rendering. The
+driver falls back from the requested bank to bank 0's matching program, then
+program 0 (drum 36); a bank without those entries remains silent.
+
+| Loader | Coverage and limits |
+| --- | --- |
+| `OplBank::from_sbi` | One SBI instrument as bank 0/program 0 |
+| `OplBank::from_op2` | 175 DMX records, optional complete names; fixed pitch, transposition, layered voices and detune; delayed vibrato rejected |
+| `OplBank::from_wopl` | v1–3, bank-select metadata, depth flags, fixed pitch and pseudo-four-operator layers; true four-operator/rhythm timbres, MT-32 defaults and nonzero ADLMIDI volume models rejected |
+| `OplBank::from_bnk` | AdLib v1.0 melodic timbres; up to 128 used entries mapped to programs by name-table order; no implicit GM mapping; HMI/BNK2 and rhythm timbres rejected |
+
+Names are retained with lossy UTF-8 for legacy encodings. WOPL v3 busy-time hints
+are ignored; allocation uses note age. All readers reject truncated records and
+invalid counts/references. No historical instrument bank is included; starter
+patch provenance and format references are recorded in `tests/fixtures/opl_banks.md`.
+
 ## Speaker, PSG and MIDI
 
 `Melody::parse("T180 O3 L8 C E G > C")` compiles QBasic `PLAY`. Pass it to
@@ -328,6 +386,7 @@ cargo run --example render_file -- song.dro target/song.wav
 cargo run --example render_file -- song.imf target/song.wav 560
 cargo run --features psg --example render_file -- song.vgm target/song.wav
 cargo run --features gm --example render_file -- song.mid target/song.wav /path/to/font.sf2
+cargo run --no-default-features --features opl,formats --example opl_midi -- opl2 target/song.wav song.mid bank.op2
 task test
 task check
 task demo           # Play the AdLib phrase live (also demo:adlib).
@@ -341,6 +400,8 @@ task demo:dma       # Four overlapping effects and 40 memory-DMA refills.
 task demo:music     # Live runtime replacement and fades.
 task demo:speaker   # Original PLAY phrase and PWM chirp.
 task demo:psg       # Tandy arpeggio and noise percussion.
+task demo:opl-patches # Six original FM patches and five hardware rhythm drums.
+task demo:opl-midi CHIP=opl3 # Original MIDI with alternating stereo placement.
 task demo:gm SF2=/path/to/font.sf2  # Uses your SoundFont.
 ```
 

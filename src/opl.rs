@@ -2,6 +2,11 @@
 
 use crate::{DosAudio, Error, OplChip, Result};
 
+mod bank;
+mod driver;
+pub use bank::{OplBank, OplBankEntry, OplBankKey, OplInstrument};
+pub use driver::OplMidiDriver;
+
 /// The five register values describing one FM operator.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct OplOperator {
@@ -75,16 +80,7 @@ impl Note {
     }
 
     fn tuning(self) -> Result<(u16, u8)> {
-        let native_rate = 315_000_000.0 / (22.0 * 288.0);
-        let mut number = self.frequency() * 1_048_576.0 / native_rate;
-        for block in 0..=7 {
-            let rounded = number.round();
-            if rounded <= 1023.0 {
-                return Ok((rounded as u16, block));
-            }
-            number *= 0.5;
-        }
-        Err(Error::Config("note exceeds the OPL frequency range"))
+        frequency_tuning(self.frequency())
     }
 }
 
@@ -127,14 +123,7 @@ impl<'a> Opl<'a> {
     }
 
     fn channel(&self, channel: u8) -> Result<(u16, u16)> {
-        let channels = if self.chip == OplChip::Opl2 { 9 } else { 18 };
-        if channel >= channels {
-            return Err(Error::Config("OPL channel is outside the installed chip"));
-        }
-        let bank = u16::from(channel / 9) << 8;
-        let local = usize::from(channel % 9);
-        let operator = [0, 1, 2, 8, 9, 10, 16, 17, 18][local];
-        Ok((bank | u16::from(channel % 9), bank | operator))
+        channel_address(self.chip, channel)
     }
 
     fn write(&mut self, writes: &[(u16, u8)]) -> Result<()> {
@@ -151,7 +140,6 @@ impl<'a> Opl<'a> {
     /// Channels without explicit OPL3 routing default to both stereo outputs.
     pub fn set_patch(&mut self, channel: u8, patch: &OplPatch) -> Result<()> {
         let (channel_register, modulator) = self.channel(channel)?;
-        let carrier = modulator + 3;
         let mut routing = 0;
         if self.chip == OplChip::Opl3 {
             routing = self.ports.opl_register(0xc0 | channel_register)? & 0xf0;
@@ -163,20 +151,13 @@ impl<'a> Opl<'a> {
         let b = patch.carrier;
         let waveform_register = 0x01 | (modulator & 0x100);
         let waveform_enable = self.ports.opl_register(waveform_register)? | 0x20;
-        self.write(&[
-            (waveform_register, waveform_enable),
-            (0x20 | modulator, a.characteristics),
-            (0x20 | carrier, b.characteristics),
-            (0x40 | modulator, a.level),
-            (0x40 | carrier, b.level),
-            (0x60 | modulator, a.attack_decay),
-            (0x60 | carrier, b.attack_decay),
-            (0x80 | modulator, a.sustain_release),
-            (0x80 | carrier, b.sustain_release),
-            (0xe0 | modulator, a.waveform),
-            (0xe0 | carrier, b.waveform),
-            (0xc0 | channel_register, routing | (patch.feedback & 0x0f)),
-        ])?;
+        self.write(&patch_writes(
+            channel_register,
+            modulator,
+            patch,
+            routing,
+            waveform_enable,
+        ))?;
         self.ports.opl_set_patch_levels(channel, [a.level, b.level])
     }
 
@@ -244,4 +225,54 @@ impl<'a> Opl<'a> {
         let value = self.ports.opl_register(0xbd)?;
         self.write(&[(0xbd, value & !drum.mask())])
     }
+}
+
+fn channel_address(chip: OplChip, channel: u8) -> Result<(u16, u16)> {
+    let channels = if chip == OplChip::Opl2 { 9 } else { 18 };
+    if channel >= channels {
+        return Err(Error::Config("OPL channel is outside the installed chip"));
+    }
+    let bank = u16::from(channel / 9) << 8;
+    let local = usize::from(channel % 9);
+    let operator = [0, 1, 2, 8, 9, 10, 16, 17, 18][local];
+    Ok((bank | u16::from(channel % 9), bank | operator))
+}
+
+fn frequency_tuning(hz: f64) -> Result<(u16, u8)> {
+    let native_rate = 315_000_000.0 / (22.0 * 288.0);
+    let mut number = hz * 1_048_576.0 / native_rate;
+    for block in 0..=7 {
+        let rounded = number.round();
+        if rounded <= 1023.0 {
+            return Ok((rounded as u16, block));
+        }
+        number *= 0.5;
+    }
+    Err(Error::Config("note exceeds the OPL frequency range"))
+}
+
+fn patch_writes(
+    channel: u16,
+    modulator: u16,
+    patch: &OplPatch,
+    routing: u8,
+    waveform_enable: u8,
+) -> [(u16, u8); 12] {
+    let carrier = modulator + 3;
+    let a = patch.modulator;
+    let b = patch.carrier;
+    [
+        (0x01 | (modulator & 0x100), waveform_enable),
+        (0x20 | modulator, a.characteristics),
+        (0x20 | carrier, b.characteristics),
+        (0x40 | modulator, a.level),
+        (0x40 | carrier, b.level),
+        (0x60 | modulator, a.attack_decay),
+        (0x60 | carrier, b.attack_decay),
+        (0x80 | modulator, a.sustain_release),
+        (0x80 | carrier, b.sustain_release),
+        (0xe0 | modulator, a.waveform),
+        (0xe0 | carrier, b.waveform),
+        (0xc0 | channel, routing | (patch.feedback & 0x0f)),
+    ]
 }

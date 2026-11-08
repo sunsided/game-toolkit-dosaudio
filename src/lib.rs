@@ -64,7 +64,10 @@ pub use music::{
 };
 pub use offline::{OfflineMachine, Wav};
 #[cfg(feature = "opl")]
-pub use opl::{Drum, Note, Opl, OplOperator, OplPatch};
+pub use opl::{
+    Drum, Note, Opl, OplBank, OplBankEntry, OplBankKey, OplInstrument, OplMidiDriver, OplOperator,
+    OplPatch,
+};
 #[cfg(feature = "sb")]
 pub use sfx::{SfxHandle, SfxMixer, SfxVoiceHandle};
 
@@ -85,5 +88,8 @@ pub mod prelude {
         ConventionalMemory, DmaController, DmaUnit, SfxHandle, SfxMixer, SfxVoiceHandle,
     };
     #[cfg(feature = "opl")]
-    pub use crate::{Drum, Note, Opl, OplOperator, OplPatch};
+    pub use crate::{
+        Drum, Note, Opl, OplBank, OplBankEntry, OplBankKey, OplInstrument, OplMidiDriver,
+        OplOperator, OplPatch,
+    };
 }

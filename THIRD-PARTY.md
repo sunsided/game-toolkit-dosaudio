@@ -15,3 +15,10 @@ Cargo resolves dependencies under their own licenses. The audio crate's source
 license does not change the terms of a combined build. No chip-core source,
 firmware ROMs, SoundFonts, extracted instrument banks, or third-party songs are
 vendored here. Dependency source packages retain their own notices.
+
+The OPL starter instruments in `src/opl/bank/starter.rs` are original register
+values authored for this crate on 2026-11-08, under the crate's triple license.
+They contain no samples, ROM data or values extracted from a historical bank.
+Bank readers implement documented file layouts; no reference implementation's
+source or external instrument bank is copied into the crate. Format references
+and supported subsets are recorded in `tests/fixtures/opl_banks.md`.

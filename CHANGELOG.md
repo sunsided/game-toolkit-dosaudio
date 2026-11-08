@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Add validated SBI/OP2/WOPL/AdLib BNK instrument banks and a small original starter set.
+- Add `OplMidiDriver` for MIDI-to-OPL preparation and transactional live messages,
+  with controllers, sustain, bend, percussion, layered voices and deterministic stealing.
+- Share patch/tuning register mapping with existing OPL helpers; preserve compiled
+  intro/loop boundaries with chip-state snapshots.
+- Add audible patch/rhythm and MIDI-on-AdLib/dual-OPL2/OPL3 tasks.
+
 ## [0.1.2] - 2026-11-08
 
 - Add `SpeakerHandle::tone`, the frequency of the note a speaker melody sounds.

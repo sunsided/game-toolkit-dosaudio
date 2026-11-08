@@ -102,3 +102,11 @@ name = "speaker"
 [[example]]
 name = "gm"
 required-features = ["gm"]
+
+[[example]]
+name = "opl_midi"
+required-features = ["opl", "formats"]
+
+[[example]]
+name = "opl_patches"
+required-features = ["opl", "formats"]
