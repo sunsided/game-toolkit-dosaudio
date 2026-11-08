@@ -1,4 +1,5 @@
 use crate::Tick;
+use game_toolkit_dosbus::{Channel, Mode, Pit};
 
 /// Square-wave frequency in hertz for a PIT channel 2 divisor.
 pub(crate) fn pit_hz(divisor: u32) -> f64 {
@@ -6,7 +7,8 @@ pub(crate) fn pit_hz(divisor: u32) -> f64 {
 }
 
 /// PIT channel 2 waveform state; passed by value to the synthesis thread.
-#[derive(Clone, Copy, Debug)]
+/// `mode` is 0, 2 or 3, matching the dosbus `Pit` channel 2 mode.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct SpeakerState {
     pub divisor: u32,
     pub epoch: Tick,
@@ -43,144 +45,81 @@ impl SpeakerState {
         if !self.data {
             return 0.0;
         }
+        if self.mode == 0 {
+            // One-shot: low for `divisor` clocks after the epoch, then high; low while gated off.
+            if !self.gate {
+                return 0.0;
+            }
+            let rise = self.epoch.0 as f64 + 12.0 * f64::from(self.divisor);
+            return (end - start.max(rise)).max(0.0);
+        }
         if !self.gate {
             return end - start;
         }
         self.high_ticks(end - self.epoch.0 as f64) - self.high_ticks(start - self.epoch.0 as f64)
     }
-
-    pub fn output(self, at: Tick) -> bool {
-        if !self.gate {
-            return true;
-        }
-        let phase = at.0.saturating_sub(self.epoch.0) / 12 % u64::from(self.divisor);
-        let high = if self.mode == 2 {
-            self.divisor - 1
-        } else {
-            self.divisor.div_ceil(2)
-        };
-        phase < u64::from(high)
-    }
 }
 
-#[derive(Clone, Copy)]
+/// Port-side speaker: the machine's single 8253 plus port 61h.
+#[derive(Clone)]
 pub(crate) struct SpeakerControl {
     pub state: SpeakerState,
+    pub pit: Pit,
     port61: u8,
-    access: u8,
-    low: Option<u8>,
-    read_high: bool,
-    latched: Option<u16>,
 }
 
 impl Default for SpeakerControl {
     fn default() -> Self {
-        Self {
+        let mut control = Self {
             state: SpeakerState::default(),
+            pit: Pit::new(),
             port61: 0,
-            access: 3,
-            low: None,
-            read_high: false,
-            latched: None,
-        }
+        };
+        control.sync();
+        control
     }
 }
 
 impl SpeakerControl {
+    /// Apply a 40h-43h or 61h write; returns channel 2's new state if it changed.
     pub fn write(&mut self, at: Tick, port: u16, value: u8) -> Option<SpeakerState> {
         match port {
-            0x43 if value >> 6 == 2 => {
-                let access = (value >> 4) & 3;
-                if access == 0 {
-                    if self.latched.is_none() {
-                        self.latched = Some(self.counter(at));
-                    }
-                    return None;
-                }
-                let mode = (value >> 1) & 7;
-                // This milestone supports the periodic binary modes used for speaker sound.
-                self.state.mode = if mode == 2 || mode == 6 { 2 } else { 3 };
-                self.access = access;
-                self.low = None;
-                self.read_high = false;
-                self.latched = None;
-                return Some(self.state);
-            }
-            0x42 => {
-                let count = match self.access {
-                    1 => u16::from(value),
-                    2 => u16::from(value) << 8,
-                    _ => match self.low.take() {
-                        None => {
-                            self.low = Some(value);
-                            return None;
-                        }
-                        Some(low) => u16::from_le_bytes([low, value]),
-                    },
-                };
-                self.state.divisor = if count == 0 { 65_536 } else { u32::from(count) };
-                self.state.epoch = at;
-            }
+            0x40..=0x43 => self.pit.write(at, port, value),
             0x61 => {
-                if value & 1 != 0 && !self.state.gate {
-                    self.state.epoch = at;
-                }
                 self.port61 = value & 0x0f;
-                self.state.gate = value & 1 != 0;
-                self.state.data = value & 2 != 0;
+                self.pit.set_gate(Channel::Ch2, at, value & 1 != 0);
             }
             _ => return None,
         }
-        Some(self.state)
+        let previous = self.state;
+        self.sync();
+        if port == 0x61 {
+            self.state.data = value & 2 != 0;
+        }
+        (self.state != previous).then_some(self.state)
     }
 
-    fn counter(self, at: Tick) -> u16 {
-        let elapsed = if self.state.gate {
-            at.0.saturating_sub(self.state.epoch.0) / 12
-        } else {
-            0
+    fn sync(&mut self) {
+        let channel = self.pit.channel(Channel::Ch2);
+        self.state.divisor = channel.divisor();
+        self.state.epoch = channel.epoch();
+        self.state.gate = channel.gate();
+        self.state.mode = match channel.mode() {
+            Mode::TerminalCount => 0,
+            Mode::RateGenerator => 2,
+            _ => 3,
         };
-        let d = u64::from(self.state.divisor);
-        let phase = elapsed % d;
-        let count = if self.state.mode == 3 {
-            let high = d.div_ceil(2);
-            if phase == 0 {
-                d
-            } else if phase < high {
-                d + d % 2 - 2 * phase
-            } else {
-                d - d % 2 - 2 * (phase - high)
-            }
-        } else {
-            d - phase
-        };
-        count as u16
     }
 
     pub fn read(&mut self, at: Tick, port: u16) -> u8 {
         match port {
             0x61 => {
-                // DRAM refresh toggles every 18 PIT input clocks.
+                let refresh = self.pit.channel(Channel::Ch1).rising_edges(Tick::ZERO, at) & 1;
                 self.port61
-                    | (((at.0 / 216) as u8 & 1) << 4)
-                    | (u8::from(self.state.output(at)) << 5)
+                    | ((refresh as u8) << 4)
+                    | (u8::from(self.pit.output(Channel::Ch2, at)) << 5)
             }
-            0x42 => {
-                let count = self.latched.unwrap_or_else(|| self.counter(at));
-                let value = if self.access == 2 || (self.access == 3 && self.read_high) {
-                    (count >> 8) as u8
-                } else {
-                    count as u8
-                };
-                if self.access != 3 || self.read_high {
-                    self.latched = None;
-                }
-                if self.access == 3 {
-                    self.read_high = !self.read_high;
-                }
-                value
-            }
-            _ => 0xff,
+            _ => self.pit.read(at, port),
         }
     }
 }

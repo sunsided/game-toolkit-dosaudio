@@ -261,6 +261,45 @@ fn play_speaker_at_waits_for_its_start_tick_and_rejects_the_past() {
 }
 
 #[test]
+fn pit_owns_timer_ports_irq0_latches_and_the_refresh_bit() {
+    let (mut dos, _engine) = DosAudio::split(SoundConfig::none().speaker(true)).unwrap();
+    let second = Tick(Tick::HZ_NUMERATOR / Tick::HZ_DENOMINATOR);
+    assert_eq!(dos.pit().unwrap().irq0_edges(Tick::ZERO, second), 18);
+    assert_eq!(dos.inb(0x61) & 0x10, 0);
+    dos.advance(Tick(216)); // one channel 1 refresh period
+    assert_eq!(dos.inb(0x61) & 0x10, 0x10);
+
+    dos.outb(0x43, 0x36);
+    dos.outb(0x40, 0x9c);
+    dos.outb(0x40, 0x2e); // divisor 11932: 100 Hz
+    let start = dos.now();
+    let period = Tick(11_932 * 12);
+    assert_eq!(dos.pit().unwrap().next_irq0(start), Some(start + period));
+    assert_eq!(
+        dos.pit()
+            .unwrap()
+            .irq0_edges(start, start + Tick(period.0 * 100)),
+        100
+    );
+    dos.outb(0x43, 0x00); // latch channel 0
+    assert_eq!([dos.inb(0x40), dos.inb(0x40)], [0x9c, 0x2e]);
+    assert_eq!(
+        dos.speaker_tone(),
+        None,
+        "channel 0 leaves the speaker alone"
+    );
+
+    dos.outb(0x43, 0xb0); // channel 2 mode 0 is a one-shot, not a tone
+    dos.outb(0x42, 0xa9);
+    dos.outb(0x42, 0x04);
+    dos.outb(0x61, 0x03);
+    assert_eq!(dos.speaker_tone(), None);
+
+    let (absent, _engine) = DosAudio::split(SoundConfig::none()).unwrap();
+    assert!(absent.pit().is_none());
+}
+
+#[test]
 fn speaker_tone_reports_gated_pit_tones_only() {
     let (mut dos, _engine) = DosAudio::split(SoundConfig::none().speaker(true)).unwrap();
     assert_eq!(dos.speaker_tone(), None);

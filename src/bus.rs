@@ -107,7 +107,7 @@ impl DosAudio {
             ports.push(PortRange::single(0xc0));
         }
         if config.speaker {
-            ports.extend([PortRange::new(0x42, 0x43), PortRange::single(0x61)]);
+            ports.extend([PortRange::new(0x40, 0x43), PortRange::single(0x61)]);
         }
         if let Some(chip) = config.opl {
             ports.push(PortRange::new(
@@ -174,8 +174,19 @@ impl DosAudio {
     /// speaker data (bit 1) clear, which includes bit-banged output. Melodies from
     /// [`AudioEngine::play_speaker`] run on the engine and are not reflected.
     pub fn speaker_tone(&self) -> Option<f64> {
-        let state = self.speaker?.state;
-        (state.gate && state.data).then(|| crate::device::speaker::pit_hz(state.divisor))
+        let state = self.speaker.as_ref()?.state;
+        (state.gate && state.data && state.mode != 0)
+            .then(|| crate::device::speaker::pit_hz(state.divisor))
+    }
+
+    /// The machine's 8253 timer, present with the PC speaker.
+    ///
+    /// With the speaker installed this object owns ports 40h-43h: route them only
+    /// here and read IRQ 0 timing from this timer instead of keeping a second one.
+    /// `None` without a speaker; the host then owns its own
+    /// [`Pit`](game_toolkit_dosbus::Pit).
+    pub fn pit(&self) -> Option<&game_toolkit_dosbus::Pit> {
+        self.speaker.as_ref().map(|speaker| &speaker.pit)
     }
 
     /// Advance machine time without consuming wall time.
@@ -263,8 +274,9 @@ impl DosAudio {
         if self.psg && port == 0xc0 {
             command = Some(Command::Psg(value));
         }
-        let mut next_speaker = self.speaker;
-        if matches!(port, 0x42 | 0x43 | 0x61)
+        // Pit is plain data without heap storage; cloning keeps the write transactional.
+        let mut next_speaker = self.speaker.clone();
+        if matches!(port, 0x40..=0x43 | 0x61)
             && let Some(speaker) = &mut next_speaker
             && let Some(state) = speaker.write(at, port, value)
         {
@@ -594,7 +606,7 @@ impl DosAudio {
         {
             return Ok(memory.controller.inb(port));
         }
-        if matches!(port, 0x42 | 0x61)
+        if matches!(port, 0x40..=0x42 | 0x61)
             && let Some(speaker) = &mut self.speaker
         {
             return Ok(speaker.read(at, port));

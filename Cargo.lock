@@ -265,9 +265,9 @@ dependencies = [
 
 [[package]]
 name = "game-toolkit-dosbus"
-version = "0.1.0"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49c2c715ddf9d2d5af782da8caedc3872db0df699b64d6585477405659d1d1c6"
+checksum = "76a15bbc5cc7717fffb6332273b5ede534bb48bd7320dff56290ac0b85a72d6f"
 
 [[package]]
 name = "glam"

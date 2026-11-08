@@ -70,8 +70,10 @@ output. Late writes apply immediately and increment `engine.stats().late_command
 The latency absorbs jitter; it does not synchronize two independently running clocks.
 
 `DosAudio` implements `game_toolkit_dosbus::IoDevice` and can be moved into a
-host's bus directly or through `ports.bus_device()`. The host charges I/O costs,
-advances attached devices and arbitrates the shared PIT control port 43h.
+host's bus directly or through `ports.bus_device()`. The host charges I/O costs
+and advances attached devices. With the speaker installed, `DosAudio` owns the
+machine's single 8253 timer (`game_toolkit_dosbus::Pit`) and ports 40h-43h: route
+them only here and read IRQ 0 timing through `ports.pit()`.
 This crate does not depend on dosvideo; dosvideo integration is a separate change.
 
 ## Playback and controls
@@ -124,10 +126,11 @@ capture yet. Overflow is explicit and marks the capture incomplete. Start before
 instrument setup for self-contained replay. DRO carries OPL writes only; PCM,
 MIDI, PSG and speaker audio are excluded.
 
-The speaker currently models binary PIT periodic modes 2 and 3, low/high and
-paired counter writes, count latching, gate/data bits, output readback, and the
-DRAM-refresh bit. BCD, other PIT modes and the 8254 read-back command are not
-implemented. OPL timers are polling/status sources; they do not drive an ISA IRQ.
+The timer is the dosbus `Pit`: modes 0, 2 and 3 on all three channels, low/high
+and paired counter writes, count latching, and IRQ 0 timing. Channel 2 drives
+the speaker through the 61h gate/data bits and output readback; channel 1 drives
+the DRAM-refresh bit. BCD, modes 1, 4 and 5 (run as mode 3) and the 8254
+read-back command are not implemented. OPL timers are polling/status sources; they do not drive an ISA IRQ.
 
 ## Sound Blaster
 

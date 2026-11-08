@@ -8,6 +8,11 @@
 - Share patch/tuning register mapping with existing OPL helpers; preserve compiled
   intro/loop boundaries with chip-state snapshots.
 - Add audible patch/rhythm and MIDI-on-AdLib/dual-OPL2/OPL3 tasks.
+- Model the 8253 timer with `game_toolkit_dosbus::Pit` (requires dosbus 0.1.2). With
+  the speaker installed, `DosAudio` handles ports 40h-43h and exposes the timer
+  through `DosAudio::pit()` for IRQ 0 timing; speaker audio is unchanged.
+- PIT channel 2 mode 0 is a one-shot instead of a square wave, and
+  `DosAudio::speaker_tone` reports no tone for it.
 
 ## [0.1.2] - 2026-11-08
 

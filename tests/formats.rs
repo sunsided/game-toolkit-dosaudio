@@ -23,7 +23,11 @@ fn imf_both_layouts_preserve_zero_delays_and_cumulative_clock_phase() {
     let sequence = Imf::load_type0(&records, 560).unwrap();
     assert_eq!(sequence.events().len(), 3);
     assert_eq!(sequence.events()[1].at, Tick::ZERO);
-    assert_eq!(sequence.duration(), Tick::from_secs_f64(1.0));
+    // One second at 560 Hz, rounded down to whole crystal ticks.
+    assert_eq!(
+        sequence.duration(),
+        Tick(Tick::HZ_NUMERATOR / Tick::HZ_DENOMINATOR)
+    );
     let mut type1 = (records.len() as u16).to_le_bytes().to_vec();
     type1.extend(records);
     assert_eq!(Imf::load(&type1, 560).unwrap().events(), sequence.events());
