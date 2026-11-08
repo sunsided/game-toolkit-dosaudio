@@ -1,0 +1,88 @@
+version: '3'
+tasks:
+  default:
+    cmds: [task --list]
+    silent: true
+  build:
+    desc: Build all examples and targets
+    cmds:
+      - cargo build --all-targets --locked {{.CLI_ARGS}}
+  test:
+    desc: Test all chip backends and the speaker-only build
+    cmds:
+      - cargo test --all-features --locked {{.CLI_ARGS}}
+      - cargo test --no-default-features --features sb,formats --locked {{.CLI_ARGS}}
+      - cargo test --no-default-features --locked {{.CLI_ARGS}}
+  check:
+    desc: Check formatting, feature combinations, docs and WebAssembly
+    cmds:
+      - cargo fmt --all --check
+      - cargo clippy --all-targets --all-features --locked -- -D warnings
+      - cargo clippy --all-targets --no-default-features --locked -- -D warnings
+      - cargo clippy --all-targets --no-default-features --features formats --locked -- -D warnings
+      - cargo clippy --all-targets --no-default-features --features opl,formats --locked -- -D warnings
+      - task: docs
+      - cargo check --lib --all-features --target wasm32-unknown-unknown --locked
+  docs:
+    desc: Build documentation with warnings denied
+    env:
+      RUSTDOCFLAGS: '-D warnings'
+    cmds:
+      - cargo doc --all-features --no-deps --locked
+  demo:
+    desc: Play the AdLib demo through the audio device
+    cmds:
+      - task: demo:adlib
+  demo:adlib:
+    desc: Play the original AdLib phrase live
+    cmds:
+      - cargo run --no-default-features --features opl,toolkit --locked --example live_adlib
+  demo:sb:
+    desc: Render and play the Sound Blaster PCM tone
+    cmds:
+      - task: render:sb
+      - task: play:wav
+        vars:
+          WAV: target/sb_pcm.wav
+  demo:pcm:
+    desc: Play a PCM buffer through the live Sound Blaster DSP
+    cmds:
+      - cargo run --no-default-features --features sb,toolkit --locked --example live_pcm
+  render:adlib:
+    desc: Render the original AdLib phrase to target/adlib.wav
+    cmds:
+      - cargo run --no-default-features --features opl --locked --example adlib -- target/adlib.wav
+  render:sb:
+    desc: Render the Sound Blaster PCM tone to target/sb_pcm.wav
+    cmds:
+      - cargo run --no-default-features --features sb --locked --example sb_pcm -- target/sb_pcm.wav
+  render:pcm:
+    desc: Render the buffered Sound Blaster chirp to target/pcm_buffer.wav
+    cmds:
+      - cargo run --no-default-features --features sb --locked --example pcm_buffer -- target/pcm_buffer.wav
+  play:wav:
+    internal: true
+    env:
+      DOSAUDIO_DEMO_WAV: '{{.WAV}}'
+    cmds:
+      - |
+        if command -v ffplay >/dev/null 2>&1; then
+          exec ffplay -nodisp -autoexit -loglevel error "$DOSAUDIO_DEMO_WAV"
+        elif command -v afplay >/dev/null 2>&1; then
+          exec afplay "$DOSAUDIO_DEMO_WAV"
+        elif command -v pw-play >/dev/null 2>&1; then
+          exec pw-play "$DOSAUDIO_DEMO_WAV"
+        elif command -v paplay >/dev/null 2>&1; then
+          exec paplay "$DOSAUDIO_DEMO_WAV"
+        elif command -v aplay >/dev/null 2>&1; then
+          exec aplay "$DOSAUDIO_DEMO_WAV"
+        else
+          echo 'Install ffplay, afplay, pw-play, paplay, or aplay to hear the WAV demo.' >&2
+          exit 1
+        fi
+  ci:
+    desc: Run checks, tests and package verification
+    cmds:
+      - task: check
+      - task: test
+      - cargo package --locked {{.CLI_ARGS}}
