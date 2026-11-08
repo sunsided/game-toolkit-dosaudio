@@ -16,3 +16,5 @@
 - Add `play_pcm` with shared sample buffers, cloneable stop/completion handles,
   automatic DSP DMA servicing, transactional time advances, combined music/PCM
   offline rendering, and live/render task demos.
+
+[Unreleased]: https://github.com/sunsided/game-toolkit-dosaudio/compare/ab49508d06c26fc73347de075e945927a0fb87cc...HEAD

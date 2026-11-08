@@ -86,3 +86,17 @@ tasks:
       - task: check
       - task: test
       - cargo package --locked {{.CLI_ARGS}}
+  publish:dry:
+    desc: Package the crate and build it from the package, without uploading
+    cmds:
+      - cargo publish --dry-run --locked {{.CLI_ARGS}}
+  release:
+    desc: "Bump the version, stamp CHANGELOG.md, commit, tag and push (VERSION=x.y.z); CI publishes"
+    requires:
+      vars: [VERSION]
+    preconditions:
+      - sh: command -v cargo-release
+        msg: "cargo-release not found - cargo install cargo-release --locked"
+    prompt: "Release {{.VERSION}}: bump, commit, tag v{{.VERSION}} and push?"
+    cmds:
+      - cargo release {{.VERSION}} --execute --no-publish
