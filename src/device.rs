@@ -1,5 +1,9 @@
+#[cfg(feature = "mpu401")]
+pub(crate) mod mpu401;
 #[cfg(feature = "opl")]
 pub(crate) mod opl;
+#[cfg(feature = "psg")]
+pub(crate) mod psg;
 #[cfg(feature = "sb")]
 pub(crate) mod sb;
 pub(crate) mod speaker;

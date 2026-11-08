@@ -2,11 +2,20 @@
 use crate::{Error, OplChip, Result, Tick};
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
+use std::time::Duration;
+
+const NO_GAIN_REQUEST: u64 = u64::MAX;
+mod runtime;
+pub use runtime::MusicController;
+pub(crate) use runtime::{MusicCapabilities, MusicRequest, MusicRuntime, validate_play};
+mod prepared;
+pub use prepared::{MusicTarget, PreparedMusic};
 
 /// A register write emitted by a prepared music sequence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum MusicEvent {
     /// Write an OPL register, including its bank bit.
     Opl {
@@ -15,6 +24,26 @@ pub enum MusicEvent {
         /// Register value.
         value: u8,
     },
+    /// A complete short MIDI message.
+    Midi(crate::MidiMessage),
+    /// Complete SysEx bytes in the prepared music's owned payload storage.
+    SysEx {
+        /// First payload byte.
+        offset: u32,
+        /// Number of payload bytes, including F0/F7.
+        length: u32,
+    },
+    /// One SN76489 latch/data byte.
+    Psg(u8),
+    /// PIT channel-2 square wave. Zero divisor encodes 65,536.
+    Speaker {
+        /// PIT divisor.
+        divisor: u16,
+        /// Whether the speaker is connected.
+        enabled: bool,
+    },
+    /// Direct binary speaker level with the PIT gate disconnected (PWM).
+    SpeakerLevel(bool),
 }
 
 /// One event's absolute position relative to the beginning of a sequence.
@@ -39,7 +68,11 @@ impl Sequence {
     pub fn new(chip: OplChip, events: Vec<TimedEvent>, duration: Tick) -> Result<Self> {
         let mut last = Tick::ZERO;
         for event in &events {
-            let MusicEvent::Opl { register, .. } = event.event;
+            let MusicEvent::Opl { register, .. } = event.event else {
+                return Err(Error::Format(
+                    "OPL sequence contains another device's event",
+                ));
+            };
             if event.at < last || event.at > duration || register > 0x1ff {
                 return Err(Error::Format(
                     "invalid sequence ordering, duration or OPL register",
@@ -106,7 +139,8 @@ pub(crate) struct MusicState {
     pub paused: AtomicBool,
     pub stopped: AtomicBool,
     pub finished: AtomicBool,
-    pub volume: AtomicU32,
+    gain_request: AtomicU64,
+    sample_rate: u32,
     pub position: AtomicU64,
     handles: AtomicUsize,
 }
@@ -119,13 +153,14 @@ pub struct MusicHandle {
     pub(crate) state: Arc<MusicState>,
 }
 impl MusicHandle {
-    pub(crate) fn new(volume: f32) -> Self {
+    pub(crate) fn new(volume: f32, sample_rate: u32) -> Self {
         Self {
             state: Arc::new(MusicState {
                 paused: AtomicBool::new(false),
                 stopped: AtomicBool::new(false),
                 finished: AtomicBool::new(false),
-                volume: AtomicU32::new(volume.to_bits()),
+                gain_request: AtomicU64::new(u64::from(volume.to_bits())),
+                sample_rate,
                 position: AtomicU64::new(0),
                 handles: AtomicUsize::new(1),
             }),
@@ -150,7 +185,32 @@ impl MusicHandle {
         } else {
             0.0
         };
-        self.state.volume.store(volume.to_bits(), Ordering::Release);
+        self.request_gain(volume, 0);
+    }
+    /// Fade the shared FM output to a finite target, clamped to 0 through 1.
+    ///
+    /// Requests are observed at output-frame boundaries; the latest volume or
+    /// fade request wins. Duration rounds up to whole output frames and must fit
+    /// in `u32` frames. A zero duration sets the gain immediately.
+    ///
+    /// For an N-frame fade, the first frame uses the current gain and the target
+    /// is reached after N rendered frames. Pausing freezes the ramp. A new fade
+    /// starts from the current ramp gain, including when it interrupts a fade.
+    pub fn fade_volume(&self, target: f32, duration: Duration) -> Result<()> {
+        if !target.is_finite() {
+            return Err(Error::Config("music fade target must be finite"));
+        }
+        let scaled = duration
+            .as_nanos()
+            .checked_mul(u128::from(self.state.sample_rate))
+            .ok_or(Error::TooLarge)?;
+        let frames = u32::try_from(scaled.div_ceil(1_000_000_000)).map_err(|_| Error::TooLarge)?;
+        self.request_gain(target.clamp(0.0, 1.0), frames);
+        Ok(())
+    }
+    fn request_gain(&self, target: f32, frames: u32) {
+        let request = (u64::from(frames) << 32) | u64::from(target.to_bits());
+        self.state.gain_request.store(request, Ordering::Release);
     }
     /// Whether the engine has reached the end or a stop was requested.
     pub fn is_finished(&self) -> bool {
@@ -182,7 +242,7 @@ impl Drop for MusicHandle {
 }
 
 pub(crate) struct Player {
-    pub sequence: Sequence,
+    pub sequence: PreparedMusic,
     pub state: Arc<MusicState>,
     pub options: PlayOptions,
     pub origin: Tick,
@@ -190,9 +250,30 @@ pub(crate) struct Player {
     pub last: Tick,
     pub ended: bool,
     pub was_paused: bool,
+    gain: GainRamp,
 }
 
 impl Player {
+    pub fn new(
+        sequence: PreparedMusic,
+        options: PlayOptions,
+        handle: &MusicHandle,
+        origin: Tick,
+        last: Tick,
+    ) -> Self {
+        Self {
+            sequence,
+            state: Arc::clone(&handle.state),
+            options,
+            origin,
+            index: 0,
+            last,
+            ended: false,
+            was_paused: false,
+            gain: GainRamp::new(options.volume),
+        }
+    }
+
     pub fn next(&self) -> Option<Tick> {
         if self.ended || self.was_paused {
             return None;
@@ -233,8 +314,8 @@ impl Player {
             Some(event.event)
         } else {
             if self.options.looped {
-                self.origin += self.sequence.duration;
-                self.index = 0;
+                self.origin += self.sequence.duration - self.sequence.loop_start;
+                self.index = self.sequence.loop_index;
             } else {
                 self.ended = true;
                 self.state.finished.store(true, Ordering::Release);
@@ -243,11 +324,64 @@ impl Player {
         }
     }
 
-    pub fn gain(&self) -> f64 {
+    pub fn gain(&mut self) -> f64 {
+        let request = self
+            .state
+            .gain_request
+            .swap(NO_GAIN_REQUEST, Ordering::Acquire);
+        if request != NO_GAIN_REQUEST {
+            self.gain
+                .request(f32::from_bits(request as u32), (request >> 32) as u32);
+        }
         if self.was_paused {
             0.0
         } else {
-            f64::from(f32::from_bits(self.state.volume.load(Ordering::Acquire)))
+            self.gain.next()
         }
+    }
+}
+
+struct GainRamp {
+    current: f64,
+    start: f64,
+    target: f64,
+    frames: u32,
+    elapsed: u32,
+}
+
+impl GainRamp {
+    fn new(volume: f32) -> Self {
+        let current = f64::from(volume);
+        Self {
+            current,
+            start: current,
+            target: current,
+            frames: 0,
+            elapsed: 0,
+        }
+    }
+
+    fn request(&mut self, target: f32, frames: u32) {
+        self.start = self.current;
+        self.target = f64::from(target);
+        self.frames = frames;
+        self.elapsed = 0;
+        if frames == 0 {
+            self.current = self.target;
+        }
+    }
+
+    fn next(&mut self) -> f64 {
+        let gain = self.current;
+        if self.elapsed < self.frames {
+            self.elapsed += 1;
+            self.current = if self.elapsed == self.frames {
+                self.target
+            } else {
+                self.start
+                    + (self.target - self.start) * f64::from(self.elapsed) / f64::from(self.frames)
+            };
+        }
+        gain
     }
 }

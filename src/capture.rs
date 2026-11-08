@@ -1,4 +1,6 @@
 use crate::{Error, OplChip, Result, Tick};
+pub(crate) mod stream;
+pub use stream::MusicCapture;
 
 /// A successful game-thread port write and its absolute machine timestamp.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -22,7 +24,7 @@ pub struct Capture {
     pub(crate) end: Tick,
     pub(crate) chip: Option<OplChip>,
     pub(crate) address: [u8; 2],
-    pub(crate) opl_alias: Option<u16>,
+    pub(crate) card: Option<(u16, crate::SbModel)>,
     pub(crate) writes: Vec<PortWrite>,
 }
 impl Capture {
@@ -56,36 +58,34 @@ impl Capture {
         let mut bank = 0usize;
         let mut time = 0u32;
         for write in &self.writes {
-            let port = if let Some(alias) = self.opl_alias
-                && (alias..=alias + 1).contains(&write.port)
+            for port in crate::bus::map_opl_ports(write.port, self.card)
+                .into_iter()
+                .flatten()
             {
-                0x388 + write.port - alias
-            } else {
-                write.port
-            };
-            if !(0x388..=0x38b).contains(&port) {
-                continue;
+                if !(0x388..=0x38b).contains(&port) {
+                    continue;
+                }
+                let target = usize::from(port >= 0x38a);
+                if target == 1 && chip == OplChip::Opl2 {
+                    continue;
+                }
+                if port & 1 == 0 {
+                    address[target] = write.value;
+                    continue;
+                }
+                let next = milliseconds(write.at)?;
+                delay(&mut data, next - time);
+                time = next;
+                if bank != target {
+                    data.push(if target == 0 { 2 } else { 3 });
+                    bank = target;
+                }
+                let register = address[target];
+                if register <= 4 {
+                    data.push(4);
+                }
+                data.extend([register, write.value]);
             }
-            let target = usize::from(port >= 0x38a);
-            if target == 1 && chip == OplChip::Opl2 {
-                continue;
-            }
-            if port & 1 == 0 {
-                address[target] = write.value;
-                continue;
-            }
-            let next = milliseconds(write.at)?;
-            delay(&mut data, next - time);
-            time = next;
-            if bank != target {
-                data.push(if target == 0 { 2 } else { 3 });
-                bank = target;
-            }
-            let register = address[target];
-            if register <= 4 {
-                data.push(4);
-            }
-            data.extend([register, write.value]);
         }
         let end = milliseconds(self.end)?;
         delay(&mut data, end - time);

@@ -1,13 +1,14 @@
 # game-toolkit-dosaudio
 
-DOS-era PC sound devices for ordinary Rust games: PC speaker, Sound Blaster 2.0, AdLib OPL2,
-dual OPL2 and OPL3, sharing the clock and I/O interfaces of
+DOS-era PC sound devices for ordinary Rust games: PC speaker, Sound Blaster, AdLib,
+Tandy PSG and MPU-401 MIDI, sharing the clock and I/O interfaces of
 [game-toolkit-dosbus](https://crates.io/crates/game-toolkit-dosbus).
 
-The initial milestones include port-level hardware control, interchangeable OPL
-cores, unsigned 8-bit mono DSP/DMA and PCM buffers, IMF/DRO sequencing, register capture and deterministic WAV rendering.
-Sound Blaster Pro/16, MPU-401, General MIDI, Roland, Tandy PSG, arrangement
-switching, QBasic `PLAY`, and synthie drivers remain future work.
+It covers SB1/2/Pro/Pro2/16 with conventional-memory DMA, a fixed-voice SFX
+mixer, runtime music replacement/fades, QBasic `PLAY` and PWM, PSG, MIDI
+UART/General MIDI, SMF/VGM readers and sequenced OPL capture. MT-32, instrument
+bank readers/OPL MIDI driving, arrangement selection/switching and synthie
+integration are not implemented yet.
 
 ## Render without an audio device
 
@@ -81,7 +82,20 @@ volume, stop and position queries; dropping the last clone stops playback.
 Sequencing and looping run inside the renderer, independent of game frame rate.
 Music and manual port I/O use the same FM hardware; music volume/pause affects
 that hardware's complete FM output, and stopping music releases its FM notes.
-Dynamic loading from the game thread and fades are not implemented yet.
+For runtime loading, create `engine.music_controller(capacity)` before moving
+it into the stream. `controller.play(prepared, options)` replaces the active
+track; `play_at` and `send_event_at` use absolute output timestamps, without
+adding port latency. Requests preserve FIFO order, including equal timestamps;
+an immediate request queued behind a future request waits for it. Full queues
+return `QueueFull`. Call `controller.reclaim()` periodically to release retired
+players on the control thread; a full retirement queue delays replacement.
+`handle.fade_volume(target, duration)` ramps across output frames, freezes while
+paused and resumes from its current gain when interrupted.
+
+`PreparedMusic` owns validated OPL, MIDI/SysEx, PSG or speaker events. Set
+`with_loop_start(at)` to play an introduction once and repeat `[at, duration)`;
+whole-track looping still starts at zero. Shared event/payload allocations remain
+owned until reclaimed or the engine is destroyed outside its callback.
 
 Third-party FM cores implement `OplCore` and are selected with
 `OplBackend::Custom(Arc::new(|| Box::new(MyCore::new())))`. The factory runs at
@@ -100,12 +114,22 @@ retains starting address latches. Start capture before programming instruments
 for self-contained replay. Music emitted directly by the audio-thread sequencer
 is not included in port captures.
 
+To capture synthesized OPL writes too, call `engine.start_capture(capacity)`
+before streaming and retain the returned `MusicCapture` on the control thread.
+Its bounded queue records actual application times after port latency and late
+write adjustment, including sequence/live events, loops, replacements and note
+releases. Poll `try_finish()` while recording to drain it; call `stop()` and keep polling after
+the renderer acknowledges the next frame boundary. Polling early returns no
+capture yet. Overflow is explicit and marks the capture incomplete. Start before
+instrument setup for self-contained replay. DRO carries OPL writes only; PCM,
+MIDI, PSG and speaker audio are excluded.
+
 The speaker currently models binary PIT periodic modes 2 and 3, low/high and
 paired counter writes, count latching, gate/data bits, output readback, and the
 DRAM-refresh bit. BCD, other PIT modes and the 8254 read-back command are not
 implemented. OPL timers are polling/status sources; they do not drive an ISA IRQ.
 
-## Sound Blaster 2.0
+## Sound Blaster
 
 For a sound effect, pass an unsigned 8-bit mono buffer to `play_pcm`:
 
@@ -161,10 +185,20 @@ uses the block size set by 48h. D0h/D4h halt and continue DMA; DAh exits auto-in
 after the current block. D1h/D3h gate the DAC without stopping DMA. F2h asserts
 a software IRQ immediately. Unsupported DSP commands are ignored.
 
-The host owns the DMA controller, memory, masks, terminal count and page wrapping.
-`IoDevice::dma_request(at)` reports a memory-to-device byte request on the
-configured channel. Retain access to the concrete `DosAudio` to deliver bytes;
-the shared bus trait deliberately defines only request observation.
+For host-serviced DMA, `IoDevice::dma_request(at)` reports a memory-to-device
+request on the configured channel. Retain concrete `DosAudio` access to supply
+bytes or words; the shared bus trait defines request observation.
+
+Alternatively, `ports.attach_dma(Arc<ConventionalMemory>)` installs an emulated
+8237 controller and 1 MiB of shared conventional memory. Program its address,
+count, page, mode and mask registers through normal ports. Time advances then
+supply due samples automatically, with 64 KiB byte-page wrapping or 128 KiB word
+windows. `poll_dma_completion()` returns bounded block/IRQ events on the control
+thread, where the host acknowledges the DSP IRQ and refills a consumed ring
+half. Polling does not acknowledge an IRQ. Queue backpressure and memory errors
+leave controller/sample/time state unchanged. `examples/dma_refill.rs` demonstrates
+40 exact half-buffer completions and four overlapping voices from `SfxMixer`.
+Mixer source ownership and replacement stay on the caller's thread.
 
 ```rust
 use game_toolkit_dosaudio::prelude::*;
@@ -191,23 +225,96 @@ Only commit the host DMA address/count after `try_dma_write_at` succeeds, since
 a full audio queue rejects the byte without changing DSP state or machine time.
 
 Output holds the last DAC value between bytes and integrates changes within an
-output sample. The initial model uses an ideal unsigned DAC without the card's
-analog filter or rate limits; ADPCM, recording, high-speed DSP commands, mixer
-chips and an internal 8237/memory implementation are
-future work. The host must service port-level DMA; merely advancing the machine
-does not supply sample data unless a buffer was installed with `play_pcm`.
+output sample. SB2 uses an ideal-DAC response. Other models apply documented
+rate limits and approximate analog response; these are not component-level
+circuit simulations. ADPCM, recording and DSP MIDI are unsupported. Time
+advances supply data when a PCM buffer or attached memory controller owns DMA;
+otherwise the host must service port-level requests.
 `OfflineMachine` exposes `next_dma_tick`, `dma_write`
 and `irq_request` for the same protocol without an audio device. See
 [`examples/sb_pcm.rs`](examples/sb_pcm.rs) for a complete original-tone WAV demo.
+
+Model constructors are `sb1()`, `sb2()`, `sb_pro()`, `sb_pro2()` and `sb16()`;
+`SoundConfig::from_blaster("A220 I5 D1 H5 T6")` parses ISA resources and type.
+Existing `SoundBlasterConfig` literals remain valid; model/high-DMA selection
+uses the separate builders. DSP versions and FM hardware are:
+
+| Model | DSP | FM | DMA playback |
+| --- | --- | --- | --- |
+| SB1 | 1.05 | OPL2 | Unsigned 8-bit mono single-cycle |
+| SB2 | 2.01 | OPL2 | Unsigned 8-bit mono, single/auto-init |
+| Pro | 3.00 | Dual OPL2 | 8-bit mono/stereo, high-speed |
+| Pro2 | 3.02 | OPL3 | 8-bit mono/stereo, high-speed |
+| SB16 | 4.05 | OPL3 | 8/16-bit, signed/unsigned, mono/stereo |
+
+Pro mixer 0Eh enables alternating-byte stereo; the time-constant rate is the
+aggregate byte rate. SB16 41h sets per-channel rate; Bxh/Cxh modes count scalar
+words/bytes and use distinct byte/word IRQ acknowledgement at 2xEh/2xFh.
+D5h/D6h and D9h control word DMA; D0h/D4h and DAh control byte DMA. CT1345/CT1745
+master, PCM and FM gains affect output; analog input/recording controls have
+readback without recording synthesis. Unknown mixer registers read FFh.
+Pro's common OPL address pair broadcasts to both logical chips; dedicated pairs
+retain independent latches. SB16 resource register changes select DMA/IRQ lines.
+Mixer gain steps and filter curves are approximations documented in source.
+
+## Speaker, PSG and MIDI
+
+`Melody::parse("T180 O3 L8 C E G > C")` compiles QBasic `PLAY`. Pass it to
+`engine.play_speaker(melody, options)` for independent speaker controls alongside
+FM/MIDI. `SpeakerHandle` supports pause, resume, volume and stop; its last drop
+stops playback. Runtime speaker changes use `engine.speaker_controller(capacity)`.
+The grammar supports A–G, accidentals, O0–6, octave shifts, T32–255, L/P1–64,
+N0–84, dots and MN/ML/MS articulation. MF/MB both prepare asynchronous playback;
+variables and substring macros are unsupported. `speaker_pwm(&duties, rate)`
+prepares binary pulses from unsigned 0–255 duty samples, with sub-sample area
+integration and a final disconnect.
+
+With `psg`, `SoundConfig::none().psg(true)` installs the Tandy/PCjr port C0h.
+`ports.psg()` exposes tone, attenuation and noise helpers. The clock is the PC
+crystal divided by four; divisor zero means 1024. Noise uses a 15-bit LFSR with
+white-noise taps 0/4, seed 4000h and deterministic control-write reset. Periodic
+noise recirculates bit zero; tone channel two can clock either noise mode.
+Attenuation steps are 2 dB, with level 15 muted. Sega/Game Gear variants are
+unsupported.
+
+With `gm`, load a caller-owned SF2 using `GmSynth::load_soundfont(&mut reader)`
+and pass the shared font to `SoundConfig::gm(font)`. `mpu401` also supports
+`MidiBackend::Custom` implementing the allocation-free `MidiSynth` contract.
+UART defaults to 330h/331h: command 3Fh enters UART mode, FFh resets it and FEh
+acknowledges both. Running status and interleaved real-time bytes are supported;
+complete SysEx is buffered without callback allocation, up to 65,536 bytes.
+Intelligent mode is unsupported. GM uses RustySynth with an eight-native-frame
+event quantum, including program, sustain, pan, volume and pitch bend. GM1/GM2
+System On and System Reset reset in place; other SysEx and aftertouch are ignored.
+No SoundFont or ROM is distributed. MT-32 is not yet available: the evaluated
+backend allocates on SysEx/reset/reverb changes and needs adaptation first.
+
+## Additional file formats
+
+`Smf::load(bytes)` prepares type 0/1 MIDI. Tracks merge stably by tick, track and
+event order; tempo changes retain fractional clock phase. PPQN and SMPTE 24/25/
+30000:1001/30 divisions are supported. Split SysEx completes at its final packet's
+timestamp. Type 2, RIFF, raw F7 escapes and malformed/truncated tracks are errors.
+
+`Vgm::load(bytes)` prepares uncompressed VGM OPL/PSG register logs with explicit
+intro/loop offsets and cumulative 44,100 Hz waits. Supported FM families are
+YM3812, YM3526 and YMF262 at fixed DOS clocks; dual YM3812 requires SB Pro hard
+panning. PSG logs must declare the modeled Tandy 15-bit noise variant; Sega's
+default PSG is incompatible. VGZ, unrelated chips, data blocks, extra headers,
+clock overrides and unsupported commands return errors. The API documentation
+lists version, clock and flag limits. File parsing occurs outside rendering.
 
 ## Features and examples
 
 | Feature | Purpose |
 | --- | --- |
 | `opl` (default) | MIT-licensed `oplon` FM core |
-| `sb` (default) | Sound Blaster 2.0 DSP, byte DMA requests, IRQ, and OPL2 |
-| `formats` (default) | IMF and DRO parsers |
+| `sb` (default) | SB1/2/Pro/Pro2/16, DMA/memory/SFX, IRQ and FM |
+| `formats` (default) | IMF/DRO/VGM/SMF parsers (optional `midly`) |
 | `toolkit` (default) | game-toolkit-audio stream integration |
+| `mpu401` | MIDI UART and custom synthesis |
+| `gm` | MIDI UART and caller-supplied SF2 via RustySynth |
+| `psg` | Tandy SN76489 tone/noise |
 | `nuked` | Optional LGPL-2.1-or-later Nuked OPL3 core |
 
 Without default features, PC speaker, timeline, capture and offline WAV output
@@ -219,6 +326,8 @@ cargo run --no-default-features --features sb --example sb_pcm -- target/sb_pcm.
 cargo run --example live_adlib
 cargo run --example render_file -- song.dro target/song.wav
 cargo run --example render_file -- song.imf target/song.wav 560
+cargo run --features psg --example render_file -- song.vgm target/song.wav
+cargo run --features gm --example render_file -- song.mid target/song.wav /path/to/font.sf2
 task test
 task check
 task demo           # Play the AdLib phrase live (also demo:adlib).
@@ -227,9 +336,15 @@ task demo:pcm       # Play a PCM buffer live, advancing the game clock.
 task render:adlib   # Export WAV without playback.
 task render:sb      # Export WAV without playback.
 task render:pcm     # Export the buffered PCM chirp.
+task demo:models    # Hear all five Sound Blaster models.
+task demo:dma       # Four overlapping effects and 40 memory-DMA refills.
+task demo:music     # Live runtime replacement and fades.
+task demo:speaker   # Original PLAY phrase and PWM chirp.
+task demo:psg       # Tandy arpeggio and noise percussion.
+task demo:gm SF2=/path/to/font.sf2  # Uses your SoundFont.
 ```
 
-`demo:sb` plays the generated WAV with the first available player: `ffplay`,
+WAV demo tasks play their generated output with the first available player: `ffplay`,
 `afplay`, `pw-play`, `paplay`, or `aplay`. `demo:adlib` uses the toolkit's audio
 output directly, as does `demo:pcm`. Playback tasks require a working audio device.
 

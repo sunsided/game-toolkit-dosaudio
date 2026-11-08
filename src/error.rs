@@ -2,6 +2,7 @@ use core::fmt;
 
 /// Errors reported during configuration, port I/O and format loading.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum Error {
     /// Invalid configuration or unsupported device selection.
     Config(&'static str),
@@ -9,6 +10,10 @@ pub enum Error {
     BackwardsTime,
     /// The bounded command queue is full; no hardware state was changed.
     QueueFull,
+    /// DMA completion events must be polled before advancing further.
+    IrqQueueFull,
+    /// A bounded synthesis trace overflowed and cannot be exported as complete.
+    CaptureOverflow,
     /// A music file is malformed or uses an unsupported encoding.
     Format(&'static str),
     /// A timestamp, sample count or file size cannot be represented.
@@ -23,6 +28,12 @@ impl fmt::Display for Error {
             Self::QueueFull => {
                 f.write_str("sound command queue is full; render audio before retrying")
             }
+            Self::IrqQueueFull => {
+                f.write_str("DMA completion queue is full; poll completion events before retrying")
+            }
+            Self::CaptureOverflow => f.write_str(
+                "synthesis capture overflowed; drain it more often or increase capacity",
+            ),
             Self::TooLarge => f.write_str("time or file size exceeds the supported range"),
         }
     }

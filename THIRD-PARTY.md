@@ -7,6 +7,8 @@
 | oplon 1.0 | MIT | Default FM synthesis core |
 | game-toolkit-audio 0.11 | EUPL-1.2 | Optional output host, with its transitive dependencies |
 | nuked-opl3 0.1 | LGPL-2.1-or-later | Optional reference synthesis core |
+| rustysynth 1.3.8 | MIT | Optional caller-supplied SF2 synthesis |
+| midly 0.5.3 | MIT OR Apache-2.0 | Optional SMF event decoding |
 | allocation-counter 0.8 | MIT OR Apache-2.0 | Test-only allocator instrumentation |
 
 Cargo resolves dependencies under their own licenses. The audio crate's source

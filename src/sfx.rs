@@ -1,6 +1,8 @@
 //! Controls for a finite Sound Blaster PCM buffer on the machine timeline.
 use crate::device::sb::{DacState, SbControl};
 use crate::{DmaChannel, Tick};
+mod mixer;
+pub use mixer::{SfxMixer, SfxVoiceHandle};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},

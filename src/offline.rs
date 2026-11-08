@@ -1,6 +1,6 @@
 use crate::{
-    AudioEngine, DosAudio, Error, Frame, MusicHandle, PlayOptions, Result, Sequence, SoundConfig,
-    Tick,
+    AudioEngine, DosAudio, Error, Frame, MusicHandle, PlayOptions, PreparedMusic, Result,
+    SoundConfig, Tick,
 };
 use std::time::Duration;
 
@@ -98,6 +98,26 @@ impl OfflineMachine {
     pub fn dma_write(&mut self, channel: crate::DmaChannel, value: u8) -> Result<()> {
         self.control.try_dma_write_at(self.now(), channel, value)
     }
+    /// Deliver one word-wide SB16 DMA unit at the current machine timestamp.
+    #[cfg(feature = "sb")]
+    pub fn dma_write16(&mut self, channel: crate::DmaChannel, value: u16) -> Result<()> {
+        self.control.try_dma_write16_at(self.now(), channel, value)
+    }
+    /// Attach conventional memory and route the internal 8237's programming ports.
+    #[cfg(feature = "sb")]
+    pub fn attach_dma(&mut self, memory: std::sync::Arc<crate::ConventionalMemory>) -> Result<()> {
+        self.control.attach_dma(memory)
+    }
+    /// Observe one memory-DMA block completion without acknowledging its IRQ.
+    #[cfg(feature = "sb")]
+    pub fn poll_dma_completion(&mut self) -> Option<crate::DmaCompletion> {
+        self.control.poll_dma_completion()
+    }
+    /// Next predicted DSP block boundary, unless stopped or paused.
+    #[cfg(feature = "sb")]
+    pub fn next_dma_block_tick(&self) -> Option<Tick> {
+        self.control.next_dma_block_tick()
+    }
     /// Current Sound Blaster IRQ line and level, without acknowledging it.
     #[cfg(feature = "sb")]
     pub fn irq_request(&self) -> Option<crate::IrqRequest> {
@@ -112,7 +132,7 @@ impl OfflineMachine {
         self.control.nosound()
     }
     /// Install a finite, non-looping soundtrack at current output time.
-    pub fn play(&mut self, sequence: Sequence) -> Result<MusicHandle> {
+    pub fn play(&mut self, sequence: impl Into<PreparedMusic>) -> Result<MusicHandle> {
         self.engine
             .play_at(sequence, PlayOptions::default(), self.now())
     }
@@ -125,6 +145,14 @@ impl OfflineMachine {
         sample_rate: u32,
     ) -> Result<crate::SfxHandle> {
         self.control.play_pcm(samples, sample_rate)
+    }
+    /// Install independent speaker music or PWM without replacing the main soundtrack.
+    pub fn play_speaker(
+        &mut self,
+        music: impl Into<PreparedMusic>,
+        options: PlayOptions,
+    ) -> Result<crate::SpeakerHandle> {
+        self.engine.play_speaker(music, options)
     }
     /// Advance both halves and capture every complete output sample up to `at`.
     pub fn advance_to(&mut self, at: Tick) -> Result<()> {
@@ -196,6 +224,7 @@ impl OfflineMachine {
             .music_end()?
             .into_iter()
             .chain(pcm_end)
+            .chain(self.engine.speaker_end()?)
             .max()
             .ok_or(Error::Config("no music or PCM buffer is installed"))?
             .checked_add(Tick::from_micros(250_000))

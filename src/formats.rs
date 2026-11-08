@@ -1,8 +1,12 @@
 //! Music files decoded into immutable, timestamped sequences before playback.
 mod dro;
 mod imf;
+mod smf;
+mod vgm;
 pub use dro::Dro;
 pub use imf::Imf;
+pub use smf::Smf;
+pub use vgm::Vgm;
 
 use crate::{Error, MusicEvent, OplChip, Result, Sequence, Tick, TickAccumulator, TimedEvent};
 

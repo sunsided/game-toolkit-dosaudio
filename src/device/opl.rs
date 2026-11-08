@@ -89,6 +89,8 @@ pub(crate) struct OplControl {
     pub chip: OplChip,
     address: [u8; 2],
     timers: [[Timer; 2]; 2],
+    registers: [u8; 512],
+    patch_levels: [[u8; 2]; 18],
 }
 
 impl OplControl {
@@ -100,6 +102,8 @@ impl OplControl {
             chip,
             address: [0; 2],
             timers: [[Timer::default(); 2]; 2],
+            registers: [0; 512],
+            patch_levels: [[0; 2]; 18],
         }
     }
 
@@ -121,6 +125,7 @@ impl OplControl {
             return None;
         }
         let register = self.address[bank];
+        self.registers[usize::from(register) + bank * 256] = value;
         if bank == 0 || self.chip == OplChip::DualOpl2 {
             match register {
                 2 | 3 => self.timers[bank][usize::from(register - 2)].value = value,
@@ -163,6 +168,16 @@ impl OplControl {
         let flags = (u8::from(timers[0].overflow && !timers[0].masked) << 6)
             | (u8::from(timers[1].overflow && !timers[1].masked) << 5);
         flags | if flags != 0 { 0x80 } else { 0 } | if self.chip == OplChip::Opl3 { 0 } else { 6 }
+    }
+
+    pub fn register(&self, register: u16) -> u8 {
+        self.registers[usize::from(register)]
+    }
+    pub fn patch_levels(&self, channel: usize) -> [u8; 2] {
+        self.patch_levels[channel]
+    }
+    pub fn set_patch_levels(&mut self, channel: usize, levels: [u8; 2]) {
+        self.patch_levels[channel] = levels;
     }
 }
 
@@ -210,14 +225,22 @@ impl OplVoice {
         self.next += Tick(288);
     }
 
-    pub fn release_notes(&mut self) {
+    pub fn release_notes(&mut self, mut record: impl FnMut(u16, u8)) {
         for bank in [0, 0x100] {
             for register in 0xb0..=0xb8 {
                 let register = register | bank;
-                self.write(register, self.registers[usize::from(register)] & !0x20);
+                let value = self.registers[usize::from(register)] & !0x20;
+                if self.chip != OplChip::Opl2 || register < 0x100 {
+                    record(register, value);
+                }
+                self.write(register, value);
             }
             let rhythm = 0xbd | bank;
-            self.write(rhythm, self.registers[usize::from(rhythm)] & !0x1f);
+            let value = self.registers[usize::from(rhythm)] & !0x1f;
+            if self.chip != OplChip::Opl2 || rhythm < 0x100 {
+                record(rhythm, value);
+            }
+            self.write(rhythm, value);
         }
     }
 }
