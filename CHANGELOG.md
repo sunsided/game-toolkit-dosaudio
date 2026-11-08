@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-08
+
 - Add `DosAudio::speaker_tone`, the frequency of the gated PIT tone port I/O plays.
 - Add `AudioEngine::play_speaker_at` to start a speaker melody at a given output tick.
 
@@ -33,5 +35,6 @@ new variants in later releases are not breaking.
   automatic DSP DMA servicing, transactional time advances, combined music/PCM
   offline rendering, and live/render task demos.
 
-[Unreleased]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/sunsided/game-toolkit-dosaudio/releases/tag/v0.1.0

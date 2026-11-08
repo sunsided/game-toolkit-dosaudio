@@ -251,7 +251,7 @@ dependencies = [
 
 [[package]]
 name = "game-toolkit-dosaudio"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "allocation-counter",
  "game-toolkit-audio",
