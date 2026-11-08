@@ -1,0 +1,6 @@
+/target/
+/.task/
+/Taskfile.yaml
+/*.wav
+/DOS-era sound library research.md
+/game-toolkit-dosaudio design draft.md
