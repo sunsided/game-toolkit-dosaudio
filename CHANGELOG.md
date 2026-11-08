@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-08
+
 - Add validated SBI/OP2/WOPL/AdLib BNK instrument banks and a small original starter set.
 - Add `OplMidiDriver` for MIDI-to-OPL preparation and transactional live messages,
   with controllers, sustain, bend, percussion, layered voices and deterministic stealing.
@@ -51,7 +53,8 @@ new variants in later releases are not breaking.
   automatic DSP DMA servicing, transactional time advances, combined music/PCM
   offline rendering, and live/render task demos.
 
-[Unreleased]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/sunsided/game-toolkit-dosaudio/releases/tag/v0.1.0
