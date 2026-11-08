@@ -1,0 +1,68 @@
+[package]
+name = "game-toolkit-dosaudio"
+version = "0.1.0"
+edition = "2024"
+autoexamples = false
+rust-version = "1.95"
+description = "DOS-era PC sound devices on a shared hardware timeline"
+license = "EUPL-1.2 OR MIT OR Apache-2.0"
+repository = "https://github.com/sunsided/game-toolkit-dosaudio"
+homepage = "https://github.com/sunsided/game-toolkit-dosaudio"
+documentation = "https://docs.rs/game-toolkit-dosaudio"
+authors = ["Markus Mayer"]
+readme = "README.md"
+keywords = ["dos", "adlib", "opl", "audio", "emulation"]
+categories = ["emulators", "game-development", "multimedia::audio"]
+include = ["src/**", "tests/**", "examples/**", "Cargo.toml", "README.md", "CHANGELOG.md", "THIRD-PARTY.md", "LICENSE*"]
+
+[features]
+default = ["opl", "sb", "formats", "toolkit"]
+opl = ["dep:oplon"]
+sb = ["opl"]
+formats = []
+toolkit = ["dep:game-toolkit-audio"]
+nuked = ["opl", "dep:nuked-opl3"]
+
+[dependencies]
+game-toolkit-dosbus = "0.1"
+rtrb = "0.4"
+oplon = { version = "1.0", optional = true, default-features = false }
+nuked-opl3 = { version = "0.1", optional = true }
+game-toolkit-audio = { version = "0.11", optional = true }
+
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+uninlined_format_args = "warn"
+
+[dev-dependencies]
+allocation-counter = "0.8"
+
+[[example]]
+name = "adlib"
+required-features = ["opl"]
+
+[[example]]
+name = "live_adlib"
+required-features = ["opl", "toolkit"]
+
+[[example]]
+name = "render_file"
+required-features = ["opl", "formats"]
+
+[[example]]
+name = "sb_pcm"
+required-features = ["sb"]
+
+[[example]]
+name = "pcm_buffer"
+required-features = ["sb"]
+
+[[example]]
+name = "live_pcm"
+required-features = ["sb", "toolkit"]
