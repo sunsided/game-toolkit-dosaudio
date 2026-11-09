@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-09
+
 - Verify caller-ROM CM-32L v1.00/v1.02 synthesis in debug/release, including
   reverb SysEx, reset/release, audible output and callback-chunk equivalence.
 - Add proptest checks for MIDI/SysEx validation, fallback graphs, exact IMF timing,
@@ -83,7 +85,8 @@ new variants in later releases are not breaking.
   automatic DSP DMA servicing, transactional time advances, combined music/PCM
   offline rendering, and live/render task demos.
 
-[Unreleased]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.2...v0.1.3
