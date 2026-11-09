@@ -26,14 +26,43 @@ fn rom_dir_finds_mame_versioned_names_before_validating_contents() {
 fn caller_roms_render_audible_channel_two_without_callback_allocation() {
     let path = std::env::var("DOSAUDIO_MT32_ROM_DIR").expect("set DOSAUDIO_MT32_ROM_DIR");
     let roms = Mt32Roms::from_rom_dir(path).unwrap();
-    let mut synth = Mt32Synth::new(roms).unwrap();
-    let mut frames = vec![[0.0; 2]; 16_000];
-    let usage = allocation_counter::measure(|| {
-        synth.message(&[0x91, 60, 110]);
-        synth.render(&mut frames);
-        synth.message(&[0x81, 60, 0]);
-    });
-    assert_eq!(usage.count_total, 0);
-    assert_eq!(usage.count_current, 0);
-    assert!(frames.iter().flatten().any(|v| v.abs() > 0.001));
+    // Original MIDI phrase plus Roland DT1 reverb writes. Construct messages
+    // on the control thread; firmware remains caller-owned.
+    let mut events = vec![(0, vec![0x91, 60, 110])];
+    for mode in 0..4 {
+        let mut bytes = vec![0xf0, 0x41, 0x10, 0x16, 0x12, 0x10, 0, 1, mode, 5, 3];
+        let sum = bytes[5..]
+            .iter()
+            .fold(0u8, |sum, byte| sum.wrapping_add(*byte));
+        bytes.extend([(128 - (sum & 127)) & 127, 0xf7]);
+        events.push((4000 * (usize::from(mode) + 1), bytes));
+    }
+    events.extend([
+        (20_000, vec![0x81, 60, 0]),
+        (22_000, vec![0xff]),
+        (24_000, vec![0x91, 64, 110]),
+        (30_000, vec![0x81, 64, 0]),
+    ]);
+    let render = |chunk| {
+        let mut synth = Mt32Synth::new(roms.clone()).unwrap();
+        let mut frames = vec![[0.0; 2]; 32_000];
+        let usage = allocation_counter::measure(|| {
+            for (index, (at, message)) in events.iter().enumerate() {
+                synth.message(message);
+                let end = events.get(index + 1).map_or(frames.len(), |event| event.0);
+                for block in frames[*at..end].chunks_mut(chunk) {
+                    synth.render(block);
+                }
+            }
+        });
+        assert_eq!(usage.count_total, 0);
+        assert_eq!(usage.count_current, 0);
+        assert_eq!(synth.dropped_messages(), 0);
+        assert!(frames.iter().flatten().all(|sample| sample.is_finite()));
+        for segment in [&frames[..20_000], &frames[24_000..30_000]] {
+            assert!(segment.iter().flatten().any(|sample| sample.abs() > 0.001));
+        }
+        frames
+    };
+    assert_eq!(render(32_000), render(113));
 }

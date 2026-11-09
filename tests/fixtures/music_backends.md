@@ -38,12 +38,23 @@ preallocates every reverb network and SysEx slot. Reset reuses memory and clears
 reverb; immediate FF reset cancels pending messages, while an ordered Roland
 SysEx reset preserves following messages.
 
-No real firmware was available for this implementation's verification. Unit tests
-use original, structurally valid synthetic control tables and zero PCM outside
+Unit tests use original, structurally valid synthetic control tables and zero PCM outside
 the public firmware hash gate. They exercise audible LA synthesis, first-use
 allocation/deallocation checks, all four reverb modes, reset ordering, native
 clock wrapping, queue overflow/reuse and callback-chunk independence. Public
-integration tests cover missing/invalid ROMs. To run the explicit asset test:
+integration tests cover missing/invalid ROMs. The opt-in asset test also exercises
+all four reverb modes, note release, reset followed by another audible note, zero
+queue drops and identical output with large versus 113-frame callbacks. MIDI and
+SysEx messages are original test data; firmware stays outside the repository.
+
+On 2026-11-09, caller-owned CM-32L control v1.00 and v1.02 images with the full
+PCM image each passed this test in debug and release builds. Both revisions also
+rendered the original demo to 98,399 stereo frames, RMS 0.018581 and peak 0.111603.
+The demo WAV SHA-256 was identical for both:
+`399ba1af8c3cdf1d33c95d325a08eb538487456829c535eb07fcb70d84a8b889`.
+This verifies this phrase and the tested control paths, not bit-exact hardware
+compatibility. The asset test remains ignored in ordinary CI because firmware is
+caller-supplied. To run it explicitly:
 
 ```sh
 DOSAUDIO_MT32_ROM_DIR=/path/to/roms cargo test --no-default-features \
