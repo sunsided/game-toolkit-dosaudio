@@ -8,6 +8,20 @@ fn missing_wrong_length_and_unrecognized_roms_fail_before_construction() {
     assert!(Mt32Roms::from_rom_dir("/definitely/absent/dosaudio-roms").is_err());
 }
 #[test]
+fn rom_dir_finds_mame_versioned_names_before_validating_contents() {
+    let dir = std::env::temp_dir().join(format!("dosaudio-mt32-names-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("cm32l_ctrl_1_02.rom"), [0; 16]).unwrap();
+    std::fs::write(dir.join("cm32l_pcm.rom"), [0; 16]).unwrap();
+    let result = Mt32Roms::from_rom_dir(&dir);
+    std::fs::remove_dir_all(&dir).unwrap();
+    // Found by name, then rejected for its contents rather than as missing.
+    assert!(matches!(
+        result,
+        Err(game_toolkit_dosaudio::Error::Format(_))
+    ));
+}
+#[test]
 #[ignore = "requires caller-owned CM-32L ROMs and DOSAUDIO_MT32_ROM_DIR"]
 fn caller_roms_render_audible_channel_two_without_callback_allocation() {
     let path = std::env::var("DOSAUDIO_MT32_ROM_DIR").expect("set DOSAUDIO_MT32_ROM_DIR");

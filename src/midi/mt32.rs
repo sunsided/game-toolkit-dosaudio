@@ -66,23 +66,37 @@ impl Mt32Roms {
             model,
         }))
     }
-    /// Read `CM32L_CONTROL.ROM` and `CM32L_PCM.ROM` from this exact directory.
-    /// No tilde expansion, ROM downloads or embedded assets are performed.
+    /// Read the control and PCM images from this exact directory, accepting
+    /// Munt's names (`CM32L_CONTROL.ROM`, `CM32L_PCM.ROM`) and MAME's
+    /// versioned names (`cm32l_ctrl_1_02.rom`, `cm32l_ctrl_1_00.rom`,
+    /// `cm32l_pcm.rom`). The first existing name wins; hashes then identify
+    /// the firmware. No tilde expansion, ROM downloads or embedded assets.
     pub fn from_rom_dir(path: impl AsRef<Path>) -> Result<Arc<Self>> {
-        fn read(path: &Path, limit: u64) -> Result<Vec<u8>> {
-            let file = std::fs::File::open(path).map_err(|_| {
-                Error::Config(
-                    "unable to open CM32L_CONTROL.ROM or CM32L_PCM.ROM in the ROM directory",
-                )
-            })?;
+        fn read(dir: &Path, names: &[&str], limit: u64) -> Result<Vec<u8>> {
+            let file = names
+                .iter()
+                .find_map(|name| std::fs::File::open(dir.join(name)).ok())
+                .ok_or(Error::Config(
+                    "no CM-32L control or PCM ROM in the ROM directory (expected CM32L_CONTROL.ROM \
+                     or cm32l_ctrl_1_0x.rom, and CM32L_PCM.ROM or cm32l_pcm.rom)",
+                ))?;
             let mut bytes = Vec::new();
             file.take(limit + 1)
                 .read_to_end(&mut bytes)
                 .map_err(|_| Error::Config("unable to read CM-32L ROM file"))?;
             Ok(bytes)
         }
-        let control = read(&path.as_ref().join("CM32L_CONTROL.ROM"), 65_536)?;
-        let pcm = read(&path.as_ref().join("CM32L_PCM.ROM"), 1_048_576)?;
+        let dir = path.as_ref();
+        let control = read(
+            dir,
+            &[
+                "CM32L_CONTROL.ROM",
+                "cm32l_ctrl_1_02.rom",
+                "cm32l_ctrl_1_00.rom",
+            ],
+            65_536,
+        )?;
+        let pcm = read(dir, &["CM32L_PCM.ROM", "cm32l_pcm.rom"], 1_048_576)?;
         Self::from_bytes(&control, &pcm)
     }
     /// Validated hardware/firmware model.

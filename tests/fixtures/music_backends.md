@@ -9,7 +9,7 @@ and adaptation notes are recorded in
 ROM-derived instrument tables or samples are included.
 
 `Mt32Roms::from_bytes` checks the original lengths and SHA-1 identities before
-parsing. `from_rom_dir` reads exactly `CM32L_CONTROL.ROM` and `CM32L_PCM.ROM`
+parsing. `from_rom_dir` reads `CM32L_CONTROL.ROM` (or `cm32l_ctrl_1_02.rom`/`cm32l_ctrl_1_00.rom`) and `CM32L_PCM.ROM` (or `cm32l_pcm.rom`)
 from the supplied directory. Supported full images:
 
 | Image | Bytes | SHA-1 |
