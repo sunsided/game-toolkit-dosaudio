@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-11-09
+
 - `Mt32Roms::from_rom_dir` also finds MAME's versioned ROM names
   (`cm32l_ctrl_1_02.rom`, `cm32l_ctrl_1_00.rom`, `cm32l_pcm.rom`).
 - Add `demo:file`/`render:file` for your own DRO, IMF, VGM and MIDI files, and
@@ -74,7 +76,8 @@ new variants in later releases are not breaking.
   automatic DSP DMA servicing, transactional time advances, combined music/PCM
   offline rendering, and live/render task demos.
 
-[Unreleased]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/sunsided/game-toolkit-dosaudio/compare/v0.1.1...v0.1.2
