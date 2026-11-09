@@ -98,11 +98,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # cargo-fuzz's locked dependencies do not build on current nightly; install it with stable.
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: nightly
           components: rust-src, rustfmt, clippy
-      - run: cargo install cargo-fuzz --version 0.13.1 --locked
+      - run: cargo +stable install cargo-fuzz --version 0.13.1 --locked
       - run: cargo fmt --manifest-path fuzz/Cargo.toml --all --check
       - run: cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked -- -D warnings
       - run: python3 fuzz/seeds.py
