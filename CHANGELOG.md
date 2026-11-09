@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- `Mt32Roms::from_rom_dir` also finds MAME's versioned ROM names
+  (`cm32l_ctrl_1_02.rom`, `cm32l_ctrl_1_00.rom`, `cm32l_pcm.rom`).
+- Add `demo:file`/`render:file` for your own DRO, IMF, VGM and MIDI files, and
+  optional `MIDI=`/`BANK=` for `demo:opl-midi`. Example errors name the missing file.
+
 ## [0.1.4] - 2026-11-08
 
 - Add optional ROM-validated CM-32L synthesis for MT-32 arrangements, adapting

@@ -69,20 +69,52 @@ tasks:
     cmds:
       - cargo run --no-default-features --features sb --locked --example pcm_buffer -- target/pcm_buffer.wav
   demo:opl-midi:
-    desc: Hear original MIDI on AdLib, dual OPL2 or OPL3 (CHIP=opl2|dual|opl3)
+    desc: Hear MIDI on AdLib, dual OPL2 or OPL3 (CHIP=opl2|dual|opl3, optional MIDI=song.mid BANK=bank.op2|wopl|bnk|sbi)
     vars:
       CHIP: '{{.CHIP | default "opl2"}}'
     cmds:
       - task: render:opl-midi
-        vars: {CHIP: '{{.CHIP}}'}
+        vars: {CHIP: '{{.CHIP}}', MIDI: '{{.MIDI}}', BANK: '{{.BANK}}'}
       - task: play:wav
         vars: {WAV: 'target/opl_midi_{{.CHIP}}.wav'}
   render:opl-midi:
-    desc: Compile original MIDI into OPL writes and render without playback
+    desc: Compile MIDI into OPL writes and render without playback (original song and starter bank unless MIDI/BANK are set)
     vars:
       CHIP: '{{.CHIP | default "opl2"}}'
+    env:
+      DOSAUDIO_DEMO_MIDI: '{{.MIDI}}'
+      DOSAUDIO_DEMO_BANK: '{{.BANK}}'
+    preconditions:
+      - sh: '[ -z "$DOSAUDIO_DEMO_BANK" ] || [ -n "$DOSAUDIO_DEMO_MIDI" ]'
+        msg: "BANK requires MIDI=/path/to/song.mid"
     cmds:
-      - cargo run --no-default-features --features opl,formats --locked --example opl_midi -- '{{.CHIP}}' 'target/opl_midi_{{.CHIP}}.wav'
+      # Task's shell splits quoted ${VAR:+"$VAR"} words, so build optional arguments explicitly.
+      - |
+        set -- '{{.CHIP}}' 'target/opl_midi_{{.CHIP}}.wav'
+        if [ -n "$DOSAUDIO_DEMO_MIDI" ]; then set -- "$@" "$DOSAUDIO_DEMO_MIDI"; fi
+        if [ -n "$DOSAUDIO_DEMO_BANK" ]; then set -- "$@" "$DOSAUDIO_DEMO_BANK"; fi
+        cargo run --no-default-features --features opl,formats --locked --example opl_midi -- "$@"
+  demo:file:
+    desc: Hear your own DRO, IMF, VGM or MIDI file (FILE=path, ARG=IMF tick Hz or SF2 path for MIDI)
+    requires:
+      vars: [FILE]
+    cmds:
+      - task: render:file
+        vars: {FILE: '{{.FILE}}', ARG: '{{.ARG}}'}
+      - task: play:wav
+        vars: {WAV: target/file.wav}
+  render:file:
+    desc: Render your own DRO, IMF, VGM or MIDI file to target/file.wav
+    requires:
+      vars: [FILE]
+    env:
+      DOSAUDIO_DEMO_FILE: '{{.FILE}}'
+      DOSAUDIO_DEMO_ARG: '{{.ARG}}'
+    cmds:
+      - |
+        set -- "$DOSAUDIO_DEMO_FILE" target/file.wav
+        if [ -n "$DOSAUDIO_DEMO_ARG" ]; then set -- "$@" "$DOSAUDIO_DEMO_ARG"; fi
+        cargo run --features psg,gm --locked --example render_file -- "$@"
   demo:opl-patches:
     desc: Hear six original OPL patches and five hardware rhythm drums
     cmds:

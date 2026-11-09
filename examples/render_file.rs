@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if arguments.next().is_some() {
         return Err("usage: render_file <input> <output.wav> [IMF Hz|SF2 path]".into());
     }
-    let bytes = std::fs::read(&input)?;
+    let bytes = std::fs::read(&input).map_err(|e| format!("{input}: {e}"))?;
     let sequence: PreparedMusic = if bytes.starts_with(b"DBRAWOPL") {
         Dro::load(&bytes)?.into()
     } else if bytes.starts_with(b"Vgm ") || bytes.starts_with(&[0x1f, 0x8b]) {

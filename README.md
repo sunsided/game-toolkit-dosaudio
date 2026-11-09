@@ -232,13 +232,20 @@ task demo:gm SF2=/path/to/font.sf2
 task demo:mt32 ROMS=/path/to/rom-directory
 task demo:synthie      # native, OPL and speaker, played in turn
 task demo:switch       # switch devices while the song continues
-
-cargo run --example render_file -- song.dro target/song.wav
-cargo run --example render_file -- song.imf target/song.wav 560
-cargo run --features gm --example render_file -- song.mid target/song.wav font.sf2
 ```
 
-All demo music is original. WAV tasks play their output with `ffplay`, `afplay`,
+Bring your own files:
+
+```sh
+task demo:file FILE=song.dro
+task demo:file FILE=song.imf ARG=700            # IMF needs the game's tick rate
+task demo:file FILE=song.mid ARG=font.sf2       # MIDI through General MIDI
+task demo:opl-midi CHIP=opl3 MIDI=song.mid BANK=GENMIDI.op2   # .op2, .wopl, .bnk or .sbi
+task demo:mt32 ROMS=/path/to/rom-directory
+```
+
+The `render:*` variants, such as `render:file` and `render:opl-midi`, write the
+WAV to `target/` without playing it. All demo music is original. WAV tasks play their output with `ffplay`, `afplay`,
 `pw-play`, `paplay` or `aplay`, whichever it finds first. No ROMs, SoundFonts or
 third-party music are included.
 

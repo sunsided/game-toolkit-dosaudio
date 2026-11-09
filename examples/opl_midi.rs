@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => return Err("chip must be opl2, dual or opl3".into()),
     };
     let bank = if let Some(bank_path) = bank_path {
-        let data = std::fs::read(bank_path)?;
+        let data = std::fs::read(&bank_path).map_err(|e| format!("{bank_path}: {e}"))?;
         if data.starts_with(b"#OPL_II#") {
             OplBank::from_op2(&data)?
         } else if data.starts_with(b"WOPL3-BANK\0") {
@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         OplBank::starter()
     };
     let midi = if let Some(input) = input {
-        Smf::load(&std::fs::read(input)?)?
+        Smf::load(&std::fs::read(&input).map_err(|e| format!("{input}: {e}"))?)?
     } else {
         original()?
     };
