@@ -85,3 +85,29 @@ jobs:
         with:
           toolchain: '1.95'
       - run: cargo check --all-targets --all-features --locked
+
+  fuzz:
+    name: Sanitizer fuzz smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: nightly
+          components: rust-src, rustfmt, clippy
+      - run: cargo install cargo-fuzz --version 0.13.1 --locked
+      - run: cargo fmt --manifest-path fuzz/Cargo.toml --all --check
+      - run: cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked -- -D warnings
+      - run: python3 fuzz/seeds.py
+      - name: Exercise all fuzz targets with AddressSanitizer and overflow checks
+        run: |
+          for fuzz_target in music_formats opl_banks playback midi_uart; do
+            cargo +nightly fuzz run "$fuzz_target" -- -runs=256 -max_len=65536 -timeout=10 -rss_limit_mb=2048
+          done

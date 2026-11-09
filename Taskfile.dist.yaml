@@ -31,6 +31,41 @@ tasks:
       - cargo clippy --all-targets --no-default-features --features psg,formats --locked -- -D warnings
       - task: docs
       - cargo check --lib --all-features --target wasm32-unknown-unknown --locked
+  test:property:
+    desc: Run generated MIDI, timing, capture and playback properties
+    cmds:
+      - cargo test --no-default-features --features opl,formats,mpu401 --test property --locked {{.CLI_ARGS}}
+  test:mt32-roms:
+    desc: Run explicit firmware-backed synthesis checks (ROMS=/path/to/rom-directory)
+    requires:
+      vars: [ROMS]
+    env:
+      DOSAUDIO_MT32_ROM_DIR: '{{.ROMS}}'
+    cmds:
+      - cargo test --no-default-features --features mt32 --test mt32 --locked -- --ignored
+  fuzz:check:
+    desc: Format and lint the separate fuzz workspace
+    cmds:
+      - cargo fmt --manifest-path fuzz/Cargo.toml --all --check
+      - cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked -- -D warnings
+  fuzz:seeds:
+    desc: Generate original parser and playback corpus seeds
+    cmds:
+      - python3 fuzz/seeds.py
+  fuzz:smoke:
+    desc: Run bounded sanitizer fuzz checks (requires nightly with rust-src and cargo-fuzz)
+    cmds:
+      - task: fuzz:seeds
+      - for: [music_formats, opl_banks, playback, midi_uart]
+        cmd: cargo +nightly fuzz run '{{.ITEM}}' -- -runs=256 -max_len=65536 -timeout=10 -rss_limit_mb=2048
+  fuzz:run:
+    desc: Fuzz one target (FUZZ_TARGET=music_formats|opl_banks|playback|midi_uart, FUZZ_SECONDS=60)
+    vars:
+      FUZZ_TARGET: '{{.FUZZ_TARGET | default "music_formats"}}'
+      FUZZ_SECONDS: '{{.FUZZ_SECONDS | default "60"}}'
+    cmds:
+      - task: fuzz:seeds
+      - cargo +nightly fuzz run '{{.FUZZ_TARGET}}' -- -max_total_time='{{.FUZZ_SECONDS}}' -max_len=65536 -timeout=10 -rss_limit_mb=2048 {{.CLI_ARGS}}
   docs:
     desc: Build documentation with warnings denied
     env:

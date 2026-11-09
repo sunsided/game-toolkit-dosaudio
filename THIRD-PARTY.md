@@ -12,6 +12,8 @@
 | synthie 0.8.0 | EUPL-1.2 | Optional control-thread native synthesis and song model |
 | moont 1.0.0 (adapted, included source) | LGPL-2.1-or-later | Optional private CM-32L core |
 | midly 0.5.3 | MIT OR Apache-2.0 | Optional SMF event decoding |
+| proptest 1.12 | MIT OR Apache-2.0 | Test-only generated inputs and shrinking |
+| libfuzzer-sys 0.4 | (MIT OR Apache-2.0) AND NCSA (upstream metadata); bundled LLVM source retains its Apache-2.0 WITH LLVM-exception notices | Separate development-only fuzz workspace |
 | allocation-counter 0.8 | MIT OR Apache-2.0 | Test-only allocator instrumentation |
 
 Cargo resolves dependencies under their own licenses. The audio crate's source

@@ -1,0 +1,45 @@
+[package]
+name = "game-toolkit-dosaudio-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+rust-version = "1.95"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+game-toolkit-dosaudio = { path = "..", default-features = false, features = ["opl", "formats", "mpu401"] }
+
+# Keep fuzzing's nightly/sanitizer dependencies out of the published crate.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "music_formats"
+path = "fuzz_targets/music_formats.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "opl_banks"
+path = "fuzz_targets/opl_banks.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "playback"
+path = "fuzz_targets/playback.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "midi_uart"
+path = "fuzz_targets/midi_uart.rs"
+test = false
+doc = false
+bench = false

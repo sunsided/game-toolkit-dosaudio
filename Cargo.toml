@@ -60,6 +60,7 @@ uninlined_format_args = "warn"
 
 [dev-dependencies]
 allocation-counter = "0.8"
+proptest = { version = "1.12", default-features = false, features = ["std"] }
 
 [[example]]
 name = "adlib"

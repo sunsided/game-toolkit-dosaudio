@@ -461,6 +461,14 @@ All parsing happens outside rendering.
 
 </details>
 
+## Development checks
+
+`task test:property` runs generated-input and playback-control properties;
+`task fuzz:smoke` runs the four sanitizer fuzz targets. Longer campaigns, seed
+reproduction and caller-ROM checks are described in the
+[testing reference](tests/fixtures/testing.md). Fuzzing uses a separate nightly
+workspace and adds no production dependencies.
+
 ## License
 
 Dosaudio's own code is **EUPL-1.2 OR MIT OR Apache-2.0**, at your option. See

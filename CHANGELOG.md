@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Verify caller-ROM CM-32L v1.00/v1.02 synthesis in debug/release, including
+  reverb SysEx, reset/release, audible output and callback-chunk equivalence.
+- Add proptest checks for MIDI/SysEx validation, fallback graphs, exact IMF timing,
+  DRO capture round-trips and randomized playback controls.
+- Add seeded, bounded cargo-fuzz targets for music/text readers, OPL banks,
+  runtime soundtrack control and MPU-401 byte framing, with Taskfile and CI runs.
+
 ## [0.1.5] - 2026-11-09
 
 - `Mt32Roms::from_rom_dir` also finds MAME's versioned ROM names
